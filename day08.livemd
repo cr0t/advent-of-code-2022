@@ -152,44 +152,24 @@ defmodule RangerCritic do
     tree_height = map[{row, col}]
 
     to_west =
-      Enum.reduce((col - 1)..0, {0, false}, fn
-        i, {count, false} ->
-          if map[{row, i}] < tree_height, do: {count + 1, false}, else: {count + 1, true}
-
-        _, acc ->
-          acc
+      Enum.reduce_while((col - 1)..0, 0, fn i, acc ->
+        if map[{row, i}] < tree_height, do: {:cont, acc + 1}, else: {:halt, acc + 1}
       end)
-      |> elem(0)
 
     to_east =
-      Enum.reduce((col + 1)..(edge_length - 1), {0, false}, fn
-        i, {count, false} ->
-          if map[{row, i}] < tree_height, do: {count + 1, false}, else: {count + 1, true}
-
-        _, acc ->
-          acc
+      Enum.reduce_while((col + 1)..(edge_length - 1), 0, fn i, acc ->
+        if map[{row, i}] < tree_height, do: {:cont, acc + 1}, else: {:halt, acc + 1}
       end)
-      |> elem(0)
 
     to_north =
-      Enum.reduce((row - 1)..0, {0, false}, fn
-        i, {count, false} ->
-          if map[{i, col}] < tree_height, do: {count + 1, false}, else: {count + 1, true}
-
-        _, acc ->
-          acc
+      Enum.reduce_while((row - 1)..0, 0, fn i, acc ->
+        if map[{i, col}] < tree_height, do: {:cont, acc + 1}, else: {:halt, acc + 1}
       end)
-      |> elem(0)
 
     to_south =
-      Enum.reduce((row + 1)..(edge_length - 1), {0, false}, fn
-        i, {count, false} ->
-          if map[{i, col}] < tree_height, do: {count + 1, false}, else: {count + 1, true}
-
-        _, acc ->
-          acc
+      Enum.reduce_while((row + 1)..(edge_length - 1), 0, fn i, acc ->
+        if map[{i, col}] < tree_height, do: {:cont, acc + 1}, else: {:halt, acc + 1}
       end)
-      |> elem(0)
 
     to_west = if col == 0, do: 0, else: to_west
     to_east = if col == edge_length - 1, do: 0, else: to_east
