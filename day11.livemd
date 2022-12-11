@@ -301,63 +301,34 @@ defmodule RoundRunner do
     |> IO.inspect(label: "round #{round}")
   end
 
-  def round(round, monkeys, order, divide_by_three \\ true) do
+  def round(_round, monkeys, reduct_by, divide_by_three \\ true) do
     # I was stuck with factors representation of big numbers...
     # ...and then I took an idea of normalization by common test remainder
     # of all monkeys from here: https://github.com/aleklisi/AdventOfCode2022/blob/main/day11_puzzle2/src/day11_puzzle2.erl#L38-L45
     # --
-    # I had to adjust it to normalize every 10th round, the whole computation
-    # happens in less than 1 second; while original with normalization every 100th
-    # round hangs in computation for too long.
-    monkeys =
-      if rem(round, 10) == 0 do
-        normalize(monkeys)
-      else
-        monkeys
-      end
+    # In the solution we normalize items' levels once every few rounds; though
+    # we can do it every time – it adds virtually nothing to the calculation
+    # complexity of the raised worriedness levels, so eventually, I went that
+    # way and reduct new levels every time monkey passes item to another. See
+    # raise_worriedness/4 below.
 
     # debug(round, monkeys)
-
-    Enum.reduce(order, monkeys, fn id, monkeys ->
-      turn(id, monkeys, divide_by_three)
-    end)
-  end
-
-  defp normalize(monkeys) do
-    common_rem =
-      monkeys
-      |> Enum.map(fn {_, m} -> m.test end)
-      |> Enum.reduce(&Kernel.*/2)
-
-    # IO.inspect(common_rem, label: "normalizing")
 
     monkeys
     |> Map.keys()
     |> Enum.reduce(monkeys, fn id, monkeys ->
-      monkey = monkeys[id]
-
-      normalized_items =
-        Enum.map(monkey.items, fn item ->
-          rem(item, common_rem)
-        end)
-
-      Map.put(monkeys, id, %{monkey | items: normalized_items})
+      turn(id, monkeys, reduct_by, divide_by_three)
     end)
   end
 
-  def turn(id, monkeys, divide_by_three) do
+  def turn(id, monkeys, reduct_by, divide_by_three) do
     monkey = monkeys[id]
 
     old_ins = monkey.inspected
     new_ins = length(monkey.items)
 
-    Enum.reduce(monkey.items, monkeys, fn item_level, monkeys ->
-      new_level =
-        if divide_by_three do
-          div(monkey.op.(item_level), 3)
-        else
-          monkey.op.(item_level)
-        end
+    Enum.reduce(monkey.items, monkeys, fn level, monkeys ->
+      new_level = raise_worriedness(level, monkey.op, reduct_by, divide_by_three)
 
       if rem(new_level, monkey.test) == 0 do
         throw_item(monkeys, new_level, monkey.ift)
@@ -366,6 +337,17 @@ defmodule RoundRunner do
       end
     end)
     |> Map.put(id, %{monkey | items: [], inspected: old_ins + new_ins})
+  end
+
+  defp raise_worriedness(level, op, reduct_by, divide_by_three) do
+    new_level =
+      if divide_by_three do
+        level |> op.() |> div(3)
+      else
+        op.(level)
+      end
+
+    rem(new_level, reduct_by)
   end
 
   defp throw_item(monkeys, item, to) do
@@ -387,10 +369,15 @@ monkeys =
     Map.put(monkeys, id, MonkeyParser.parse(monkey_props))
   end)
 
-monkeys_order = Map.keys(monkeys)
+# common divisor will be extremely useful in the 2nd part: reduction of
+# a new worry level allows us to avoid storing very large numbers
+reduct_by =
+  monkeys
+  |> Enum.map(fn {_, m} -> m.test end)
+  |> Enum.reduce(&Kernel.*/2)
 
 Enum.reduce(1..20, monkeys, fn r, monkeys ->
-  RoundRunner.round(r, monkeys, monkeys_order)
+  RoundRunner.round(r, monkeys, reduct_by)
 end)
 |> Map.values()
 |> Enum.map(fn m -> m.inspected end)
@@ -489,7 +476,7 @@ Worry levels are no longer divided by three after each item is inspected; you'll
 
 ```elixir
 Enum.reduce(1..10000, monkeys, fn r, monkeys ->
-  RoundRunner.round(r, monkeys, monkeys_order, false)
+  RoundRunner.round(r, monkeys, reduct_by, false)
 end)
 |> Map.values()
 |> Enum.map(fn m -> m.inspected end)
