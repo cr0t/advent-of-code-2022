@@ -1,0 +1,166 @@
+# Day 12: Hill Climbing Algorithm
+
+```elixir
+Mix.install([{:kino, "~> 0.8.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Please paste your input:")
+```
+
+```elixir
+defmodule Day12Shared do
+  @doc """
+  Generate a map of the given input. Store it as a Map with keys as coordinations
+  and values as heights. Plus, some meta information (like width and height of the map,
+  start and finish coordinates).
+  """
+  def parse(input) do
+    rows =
+      input
+      |> Kino.Input.read()
+      |> String.split("\n")
+
+    map = %{
+      max_x: rows |> hd() |> String.length() |> Kernel.-(1),
+      max_y: length(rows) - 1
+    }
+
+    rows
+    |> Enum.map(&String.codepoints/1)
+    |> Enum.with_index()
+    |> Enum.reduce(map, fn {row, y}, map ->
+      row
+      |> Enum.with_index()
+      |> Enum.reduce(map, fn
+        {"S", x}, map ->
+          map
+          |> Map.put({x, y}, 0)
+          |> Map.put(:start, {x, y})
+
+        {"E", x}, map ->
+          map
+          |> Map.put({x, y}, 27)
+          |> Map.put(:finish, {x, y})
+
+        {h, x}, map ->
+          h = String.to_charlist(h) |> hd() |> Kernel.-(96)
+          Map.put(map, {x, y}, h)
+      end)
+    end)
+  end
+
+  @doc """
+  Generate a Map with keys (as coords) and values as lists of available coords to
+  move in (they must be neighbors from N/E/S/W and their height difference must be
+  less than 1 smth.)
+  """
+  def graph(map) do
+    map
+    |> Enum.reduce(%{}, fn
+      {{_x, _y} = coord, _h}, graph ->
+        possible_moves =
+          coord
+          |> directions(map[:max_x], map[:max_y])
+          |> walkable(map, coord)
+
+        Map.put(graph, coord, possible_moves)
+
+      # we are not interested in any meta-information (like :max_x or :finish...)
+      _, graph ->
+        graph
+    end)
+  end
+
+  # just a helper to get a list of possible moves; consider edges and removes
+  # coordinates that are out of bound
+  defp directions({x, y}, max_x, max_y) do
+    [{x, y - 1}, {x + 1, y}, {x, y + 1}, {x - 1, y}]
+    |> Enum.reject(fn {x, y} ->
+      x < 0 or y < 0 or (x > max_x or y > max_y)
+    end)
+  end
+
+  # helper to filter possible moves further – they must be very close in height
+  defp walkable(points, map, from) do
+    from_height = map[from]
+
+    points
+    |> Enum.filter(fn coord ->
+      to_height = map[coord]
+      to_height - from_height <= 1
+    end)
+  end
+end
+```
+
+## Part 1
+
+You try contacting the Elves using your handheld device, but the river you're following must be too low to get a decent signal.
+
+You ask the device for a heightmap of the surrounding area (your puzzle input). The heightmap shows the local area from above broken into a grid; the elevation of each square of the grid is given by a single lowercase letter, where `a` is the lowest elevation, `b` is the next-lowest, and so on up to the highest elevation, `z`.
+
+Also included on the heightmap are marks for your current position (`S`) and the location that should get the best signal (`E`). Your current position (`S`) has elevation `a`, and the location that should get the best signal (`E`) has elevation `z`.
+
+You'd like to reach `E`, but to save energy, you should do it in **as few steps as possible**. During each step, you can move exactly one square up, down, left, or right. To avoid needing to get out your climbing gear, the elevation of the destination square can be **at most one higher** than the elevation of your current square; that is, if your current elevation is `m`, you could step to elevation `n`, but not to elevation `o`. (This also means that the elevation of the destination square can be much lower than the elevation of your current square.)
+
+For example:
+
+```
+Sabqponm
+abcryxxl
+accszExk
+acctuvwj
+abdefghi
+```
+
+Here, you start in the top-left corner; your goal is near the middle. You could start by moving down or right, but eventually you'll need to head toward the `e` at the bottom. From there, you can spiral around to the goal:
+
+```
+v..v<<<<
+>v.vv<<^
+.>vv>E^^
+..v>>>^^
+..>>>>>^
+```
+
+In the above diagram, the symbols indicate whether the path exits each square moving up (`^`), down (`v`), left (`<`), or right (`>`). The location that should get the best signal is still `E`, and `.` marks unvisited squares.
+
+This path reaches the goal in **31** steps, the fewest possible.
+
+**What is the fewest steps required to move from your current position to the location that should get the best signal?**
+
+```elixir
+defmodule Day12Part1 do
+  def solve(graph, start, finish) do
+    bfs(graph, [{0, start}], finish, MapSet.new([start]))
+  end
+
+  def bfs(_graph, [], _finish, _visited),
+    do: :not_found
+
+  def bfs(_graph, [{moves, finish} | _], finish, _visited),
+    do: moves - 2
+
+  def bfs(graph, [{moves, node} | routes], finish, visited) do
+    next =
+      graph[node]
+      |> Enum.filter(&(!MapSet.member?(visited, &1)))
+      |> Enum.map(&{moves + 1, &1})
+
+    new_routes = routes ++ next
+
+    visited = MapSet.union(visited, MapSet.new(Enum.map(next, &elem(&1, 1))))
+
+    bfs(graph, new_routes, finish, visited)
+  end
+end
+
+map = Day12Shared.parse(input)
+
+map
+|> Day12Shared.graph()
+|> Day12Part1.solve(map[:start], map[:finish])
+```
