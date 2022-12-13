@@ -32,7 +32,7 @@ defmodule Day13Shared do
   ]
   ```
   """
-  def parse(input) do
+  def parse_pairs(input) do
     input
     |> Kino.Input.read()
     |> String.split("\n\n")
@@ -46,9 +46,19 @@ defmodule Day13Shared do
     end)
     |> Enum.with_index(1)
   end
+
+  def parse_all(input) do
+    input
+    |> Kino.Input.read()
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn raw_signal ->
+      {signal, _} = Code.eval_string(raw_signal)
+      signal
+    end)
+  end
 end
 
-# Day13Shared.parse(input)
+# Day13Shared.parse_all(input)
 ````
 
 ## Part 1
@@ -176,16 +186,16 @@ defmodule Day13Part1 do
     end)
   end
 
-  defp compare(l, r) when is_integer(l) and is_integer(r) and l < r, do: :correct
-  defp compare(l, r) when is_integer(l) and is_integer(r) and l > r, do: :incorrect
-  defp compare(l, r) when is_integer(l) and is_integer(r) and l == r, do: :unknown
-  defp compare(l, r) when is_list(l) and is_integer(r), do: compare(l, [r])
-  defp compare(l, r) when is_integer(l) and is_list(r), do: compare([l], r)
-  defp compare([], []), do: :unknown
-  defp compare([], _), do: :correct
-  defp compare(_, []), do: :incorrect
+  def compare(l, r) when is_integer(l) and is_integer(r) and l < r, do: :correct
+  def compare(l, r) when is_integer(l) and is_integer(r) and l > r, do: :incorrect
+  def compare(l, r) when is_integer(l) and is_integer(r) and l == r, do: :unknown
+  def compare(l, r) when is_list(l) and is_integer(r), do: compare(l, [r])
+  def compare(l, r) when is_integer(l) and is_list(r), do: compare([l], r)
+  def compare([], []), do: :unknown
+  def compare([], _), do: :correct
+  def compare(_, []), do: :incorrect
 
-  defp compare([l | l_tail], [r | r_tail]) do
+  def compare([l | l_tail], [r | r_tail]) do
     case compare(l, r) do
       :unknown -> compare(l_tail, r_tail)
       known -> known
@@ -194,9 +204,67 @@ defmodule Day13Part1 do
 end
 
 input
-|> Day13Shared.parse()
+|> Day13Shared.parse_pairs()
 |> Day13Part1.classify()
 |> Enum.filter(&(elem(&1, 1) == :correct))
 |> Enum.map(&elem(&1, 0))
 |> Enum.sum()
+```
+
+## Part 2
+
+Now, you just need to put **all** of the packets in the right order. Disregard the blank lines in your list of received packets.
+
+The distress signal protocol also requires that you include two additional **divider packets**:
+
+```
+[[2]]
+[[6]]
+```
+
+Using the same rules as before, organize all packets - the ones in your list of received packets as well as the two divider packets - into the correct order.
+
+For the example above, the result of putting the packets in the correct order is:
+
+```
+[]
+[[]]
+[[[]]]
+[1,1,3,1,1]
+[1,1,5,1,1]
+[[1],[2,3,4]]
+[1,[2,[3,[4,[5,6,0]]]],8,9]
+[1,[2,[3,[4,[5,6,7]]]],8,9]
+[[1],4]
+[[2]]
+[3]
+[[4,4],4,4]
+[[4,4],4,4,4]
+[[6]]
+[7,7,7]
+[7,7,7,7]
+[[8,7,6]]
+[9]
+```
+
+Afterward, locate the divider packets. To find the **decoder key** for this distress signal, you need to determine the indices of the two divider packets and multiply them together. (The first packet is at index 1, the second packet is at index 2, and so on.) In this example, the divider packets are **10th** and **14th**, and so the decoder key is **140**.
+
+Organize all of the packets into the correct order. **What is the decoder key for the distress signal?**
+
+```elixir
+div_2 = [[2]]
+div_6 = [[6]]
+
+signals =
+  input
+  |> Day13Shared.parse_all()
+
+aligned_packets =
+  [div_2 | [div_6 | signals]]
+  |> Enum.sort(&(Day13Part1.compare(&1, &2) == :correct))
+
+ind_2 = Enum.find_index(aligned_packets, &(&1 == div_2))
+ind_6 = Enum.find_index(aligned_packets, &(&1 == div_6))
+
+(ind_2 + 1) * (ind_6 + 1)
 ```
