@@ -59,15 +59,22 @@ defmodule Day14Shared do
   defp rock_line(cave, {s_x, y}, {f_x, y}),
     do: Enum.reduce(s_x..f_x, cave, &Map.put(&2, {&1, y}, :rock))
 
-  def render(cave) do
-    %{min_x: min_x, max_x: max_x, max_y: max_y} = cave.meta
+  def render(cave, opts \\ [with_floor: false]) do
+    with_floor = Keyword.get(opts, :with_floor)
+
+    # we have to draw the full canvas (sand can go beyond initial edges in Part 2)
+    # so we collect all the available points from the cave map to find new edges
+    all_points = Map.keys(cave) |> Enum.reject(&(&1 == :meta))
+    min_x = Enum.map(all_points, &elem(&1, 0)) |> Enum.min()
+    max_x = Enum.map(all_points, &elem(&1, 0)) |> Enum.max()
+    max_y = if with_floor, do: cave.meta[:max_y] + 2, else: cave.meta[:max_y]
 
     Enum.map(0..max_y, fn y ->
       Enum.map(min_x..max_x, fn x ->
-        case Map.get(cave, {x, y}, :air) do
-          :rock -> "#"
-          :sand -> "o"
-          :air -> "."
+        if with_floor do
+          if y < max_y, do: tile(cave, {x, y}), else: "#"
+        else
+          tile(cave, {x, y})
         end
       end)
       |> Enum.join()
@@ -77,10 +84,18 @@ defmodule Day14Shared do
 
     cave
   end
+
+  defp tile(cave, coord) do
+    case Map.get(cave, coord, :air) do
+      :rock -> "#"
+      :sand -> "o"
+      :air -> "."
+    end
+  end
 end
 
 # Day14Shared.parse(input)
-# |> Day14Shared.render()
+# |> Day14Shared.render(with_floor: true)
 ```
 
 ## Part 1
@@ -275,4 +290,93 @@ end
 input
 |> Day14Shared.parse()
 |> Day14Part1.fill_with_sand()
+```
+
+## Part 2
+
+You realize you misread the scan. There isn't an endless void at the bottom of the scan - there's floor, and you're standing on it!
+
+You don't have time to scan the floor, so assume the floor is an infinite horizontal line with a `y` coordinate equal to **two plus the highest `y` coordinate** of any point in your scan.
+
+In the example above, the highest `y` coordinate of any point is `9`, and so the floor is at `y=11`. (This is as if your scan contained one extra rock path like `-infinity,11 -> infinity,11`.) With the added floor, the example above now looks like this:
+
+```
+       ...........+........
+        ....................
+        ....................
+        ....................
+        .........#...##.....
+        .........#...#......
+        .......###...#......
+        .............#......
+        .............#......
+        .....#########......
+        ....................
+<-- etc #################### etc -->
+```
+
+To find somewhere safe to stand, you'll need to simulate falling sand until a unit of sand comes to rest at 500,0, blocking the source entirely and stopping the flow of sand into the cave. In the example above, the situation finally looks like this after 93 units of sand come to rest:
+
+```
+............o............
+...........ooo...........
+..........ooooo..........
+.........ooooooo.........
+........oo#ooo##o........
+.......ooo#ooo#ooo.......
+......oo###ooo#oooo......
+.....oooo.oooo#ooooo.....
+....oooooooooo#oooooo....
+...ooo#########ooooooo...
+..ooooo.......ooooooooo..
+#########################
+```
+
+Using your scan, simulate the falling sand until the source of the sand becomes blocked. **How many units of sand come to rest?**
+
+```elixir
+defmodule Day14Part2 do
+  @drop_from {500, 0}
+
+  def fill_with_sand(%{meta: meta} = cave) do
+    max_area_to_fill = (meta.max_x - meta.min_x) * meta.max_y
+
+    Enum.reduce_while(1..(max_area_to_fill ** 2), cave, fn i, cave ->
+      # Just a bit of debug visualisation, every few steps...
+      if rem(i, 1000) == 0 do
+        IO.puts("== Step #{i} ==")
+        Day14Shared.render(cave, with_floor: true)
+      end
+
+      case land_sand(cave, @drop_from) do
+        @drop_from -> {:halt, i}
+        coord -> {:cont, Map.put(cave, coord, :sand)}
+      end
+    end)
+  end
+
+  def land_sand(cave, {x, y} = coord) do
+    possible_moves = [{x, y + 1}, {x - 1, y + 1}, {x + 1, y + 1}]
+    move_to = Enum.filter(possible_moves, &(Map.get(cave, &1) == nil))
+
+    if length(move_to) == 0 do
+      coord
+    else
+      next_to = hd(move_to)
+
+      # we need to check if a unit of sand reached our imaginary floor
+      if is_floor?(cave, next_to) do
+        coord
+      else
+        land_sand(cave, next_to)
+      end
+    end
+  end
+
+  defp is_floor?(%{meta: meta}, {_, y}), do: y >= meta.max_y + 2
+end
+
+input
+|> Day14Shared.parse()
+|> Day14Part2.fill_with_sand()
 ```
