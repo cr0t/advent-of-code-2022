@@ -220,3 +220,147 @@ input
 |> Day15Shared.parse()
 |> Day15Part1.solve_for(2_000_000)
 ```
+
+## Part 2
+
+Your handheld device indicates that the distress signal is coming from a beacon nearby. The distress beacon is not detected by any sensor, but the distress beacon must have `x` and `y` coordinates each no lower than `0` and no larger than `4000000`.
+
+To isolate the distress beacon's signal, you need to determine its **tuning frequency**, which can be found by multiplying its `x` coordinate by `4000000` and then adding its `y` coordinate.
+
+In the example above, the search space is smaller: instead, the `x` and `y` coordinates can each be at most `20`. With this reduced search area, there is only a single position that could have a beacon: `x=14, y=11`. The tuning frequency for this distress beacon is `56000011`.
+
+Find the only possible position for the distress beacon. **What is its tuning frequency?**
+
+```elixir
+defmodule Day15Part2 do
+  @area_limit 4_000_000
+
+  @doc """
+  Prepares and runs solution on the whole number of cores available on the
+  machine. Most of the code just to split the number of rows into similar
+  chunks to pass them later to `Task.async_stream`; `Stream.reject` helps
+  to cleanup the output.
+  """
+  def solve(input) do
+    cores = System.schedulers_online()
+    batch_size = ceil(@area_limit / cores)
+
+    batches =
+      Enum.reduce(1..cores, {[], 0}, fn _, {batches, start} ->
+        finish = start + batch_size
+        finish = if finish > @area_limit, do: @area_limit, else: finish
+
+        {[start..finish | batches], finish}
+      end)
+      |> elem(0)
+
+    # HERE THE MAIN THING STARTS!
+    Task.async_stream(batches, &solve_rows(input, &1))
+    |> Stream.reject(&match?({:ok, nil}, &1))
+    |> Enum.to_list()
+  end
+
+  @doc """
+  This is the start of the main magic....
+
+  It takes a parsed input and iterates through the given range of rows,
+  trying to find if there is a signal coverage whole in it.
+
+  Returns a number of row (y), and two numbers (x) that contain a signal
+  hole in between, or just nil.
+  """
+  def solve_rows(input, rows) do
+    Enum.reduce_while(rows, nil, fn row_n, acc ->
+      case Day15Part2.find_hole(input, row_n) do
+        {:hole, coord} -> {:halt, [y: row_n, x_between: coord]}
+        _ -> {:cont, acc}
+      end
+    end)
+  end
+
+  @doc """
+  To find out if there is a signal hole in the coverage for the given row (y).
+
+  How we do this:
+
+  - calculate radius for each sensor
+  - filter out sensors that too far away from the given row (radius > distance to row)
+  - calculate list of ranges (of coordinate x) of coverage signal for that given row
+  - sort the ranges
+  - reduce them and check if beginning of the next range is in the currently collected:
+    this procedure helps us to understand if a whole range is consecutive or not
+
+  If hole is found, we early exit from the reducing process.
+  """
+  def find_hole(input, to_row) do
+    signal_cells =
+      input
+      |> Keyword.get(:sensors)
+      # find radius for each sensor
+      |> Enum.map(fn {sensor, beacon} ->
+        radius = Day15Shared.distance(sensor, beacon)
+        {sensor, radius}
+      end)
+      # get rid of sensors too far from the row we are calculating coverage for
+      |> Enum.filter(fn {{_, y}, radius} ->
+        abs(y - to_row) < radius
+      end)
+      # calculate coverage ranges for the given row
+      |> Enum.map(fn {sensor, radius} ->
+        covered_range(sensor, radius, to_row)
+      end)
+      # we need to sort ranges before the next step
+      |> Enum.sort()
+
+    # here we have to find if combined range (from all ranges we got on previous step)
+    # is consecutive or has a hole in it
+    Enum.reduce_while(signal_cells, hd(signal_cells), fn {from, to}, {min_x, max_x} ->
+      if from in min_x..(max_x + 1) do
+        cond do
+          to > max_x -> {:cont, {min_x, to}}
+          true -> {:cont, {min_x, max_x}}
+        end
+      else
+        {:halt, {:hole, {max_x, from}}}
+      end
+    end)
+  end
+
+  @doc """
+  To understand how many cells are covered with a signal from a given sensor we need
+  to know a few things: sensor's position, it's signal radius, direct distance to the
+  row.
+
+  Let's take a look at example:
+
+     0123456
+  0  ...#...
+  1* ..###..
+  2  .##S##.
+  3  ..###..
+  4  ...#...
+
+  Sensor position is 3,2. We're interested in row number 1. Distance from sensor
+  is abs(2 - 1) = 1. We can see that signal fades according to a simple formula,
+  so we have to find it and get beginning of the range on x scale and its end (by
+  decreasing half of signal strength from x coordinate of sensor). Profit!
+  """
+  def covered_range({x, y}, radius, row_n) do
+    distance_to_row = abs(y - row_n)
+    signal_strength = abs(radius - distance_to_row) * 2 + 1
+
+    to_side = div(signal_strength, 2)
+    to_left = x - to_side
+    to_right = x + to_side
+
+    to_left = if to_left < 0, do: 0, else: to_left
+    to_right = if to_right > @area_limit, do: @area_limit, else: to_right
+
+    {to_left, to_right}
+  end
+end
+
+input
+|> Day15Shared.parse()
+|> Day15Part2.solve()
+```
