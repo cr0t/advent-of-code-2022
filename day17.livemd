@@ -1,0 +1,621 @@
+# Day 17: Pyroclastic Flow
+
+```elixir
+Mix.install([{:kino, "~> 0.8.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Please paste your input:")
+```
+
+```elixir
+defmodule Day17Shared do
+  @rocks ~w[plank cross el pole square]a
+  @shapes %{
+    plank: [{0, 0}, {1, 0}, {2, 0}, {3, 0}],
+    cross: [{1, 0}, {0, 1}, {1, 1}, {2, 1}, {1, 2}],
+    el: [{2, 0}, {2, 1}, {0, 2}, {1, 2}, {2, 2}],
+    pole: [{0, 0}, {0, 1}, {0, 2}, {0, 3}],
+    square: [{0, 0}, {1, 0}, {0, 1}, {1, 1}]
+  }
+
+  def jets(input) do
+    input
+    |> Kino.Input.read()
+    |> String.codepoints()
+    |> List.to_tuple()
+  end
+
+  def rocks(), do: Stream.cycle(@rocks)
+  def shape(name), do: Map.get(@shapes, name)
+
+  def render(chamber, figure \\ [name: nil, pos: nil], extra_height \\ 4) do
+    render_height = highest_rock(chamber) + 3 + extra_height
+
+    chamber = with_figure(chamber, figure)
+
+    Enum.map(render_height..0, fn y ->
+      Enum.map(-1..7, fn
+        -1 -> "|"
+        7 -> "|#{y}"
+        x -> Map.get(chamber, {x, y}, ".")
+      end)
+      |> Enum.join()
+    end)
+    |> Kernel.++(["|0123456|"])
+    |> Enum.join("\n")
+    |> IO.puts()
+
+    # return just to use in map/reduce
+    chamber
+  end
+
+  def highest_rock(chamber) do
+    case Map.keys(chamber) do
+      [] -> 0
+      coords -> Enum.sort_by(coords, &elem(&1, 1), :desc) |> hd() |> elem(1)
+    end
+  end
+
+  # translates figures' coordinates into to chamber ones based on starting position
+  # chamber and figure has their own coordinates' systems:
+  # - for figure 0,0 is in the left top corner
+  # - for chamber 0,0 is in the bottom left corner
+  # we need to properly translate final coordinates to render them
+  defp with_figure(chamber, figure) do
+    shape_name = Keyword.get(figure, :name)
+
+    if shape_name == nil do
+      chamber
+    else
+      {s_x, s_y} = Keyword.get(figure, :pos)
+
+      shape(shape_name)
+      |> Enum.reduce(chamber, fn {shape_x, shape_y}, chamber ->
+        x = s_x + shape_x
+        y = s_y - shape_y
+
+        Map.put(chamber, {x, y}, "@")
+      end)
+    end
+  end
+end
+
+# Day17Shared.rocks()
+# |> Enum.take(3)
+# |> Enum.map(&Day17Shared.shape/1)
+
+# input
+# |> Day17Shared.jets()
+# |> Enum.take(44)
+
+# Day17Shared.shape(:el)
+
+# plank cross el pole square
+Day17Shared.render(
+  %{
+    {0, 0} => "#",
+    {1, 0} => "#",
+    {1, 1} => "#",
+    {1, 2} => "#"
+  },
+  name: :square,
+  pos: {2, 4}
+)
+```
+
+## Part 1
+
+Your handheld device has located an alternative exit from the cave for you and the elephants. The ground is rumbling almost continuously now, but the strange valves bought you some time. It's definitely getting warmer in here, though.
+
+The tunnels eventually open into a very tall, narrow chamber. Large, oddly-shaped rocks are falling into the chamber from above, presumably due to all the rumbling. If you can't work out where the rocks will fall next, you might be crushed!
+
+The five types of rocks have the following peculiar shapes, where `#` is rock and `.` is empty space:
+
+```
+####
+
+.#.
+###
+.#.
+
+..#
+..#
+###
+
+#
+#
+#
+#
+
+##
+##
+```
+
+The rocks fall in the order shown above: first the `-` shape, then the `+` shape, and so on. Once the end of the list is reached, the same order repeats: the `-` shape falls first, sixth, 11th, 16th, etc.
+
+The rocks don't spin, but they do get pushed around by jets of hot gas coming out of the walls themselves. A quick scan reveals the effect the jets of hot gas will have on the rocks as they fall (your puzzle input).
+
+For example, suppose this was the jet pattern in your cave:
+
+```
+>>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>
+```
+
+In jet patterns, `<` means a push to the left, while `>` means a push to the right. The pattern above means that the jets will push a falling rock right, then right, then right, then left, then left, then right, and so on. If the end of the list is reached, it repeats.
+
+The tall, vertical chamber is exactly **seven units wide**. Each rock appears so that its left edge is two units away from the left wall and its bottom edge is three units above the highest rock in the room (or the floor, if there isn't one).
+
+After a rock appears, it alternates between **being pushed by a jet of hot gas** one unit (in the direction indicated by the next symbol in the jet pattern) and then **falling one unit down**. If any movement would cause any part of the rock to move into the walls, floor, or a stopped rock, the movement instead does not occur. If a **downward** movement would have caused a falling rock to move into the floor or an already-fallen rock, the falling rock stops where it is (having landed on something) and a new rock immediately begins falling.
+
+Drawing falling rocks with `@` and stopped rocks with `#`, the jet pattern in the example above manifests as follows:
+
+```
+The first rock begins falling:
+|..@@@@.|
+|.......|
+|.......|
+|.......|
++-------+
+
+Jet of gas pushes rock right:
+|...@@@@|
+|.......|
+|.......|
+|.......|
++-------+
+
+Rock falls 1 unit:
+|...@@@@|
+|.......|
+|.......|
++-------+
+
+Jet of gas pushes rock right, but nothing happens:
+|...@@@@|
+|.......|
+|.......|
++-------+
+
+Rock falls 1 unit:
+|...@@@@|
+|.......|
++-------+
+
+Jet of gas pushes rock right, but nothing happens:
+|...@@@@|
+|.......|
++-------+
+
+Rock falls 1 unit:
+|...@@@@|
++-------+
+
+Jet of gas pushes rock left:
+|..@@@@.|
++-------+
+
+Rock falls 1 unit, causing it to come to rest:
+|..####.|
++-------+
+
+A new rock begins falling:
+|...@...|
+|..@@@..|
+|...@...|
+|.......|
+|.......|
+|.......|
+|..####.|
++-------+
+
+Jet of gas pushes rock left:
+|..@....|
+|.@@@...|
+|..@....|
+|.......|
+|.......|
+|.......|
+|..####.|
++-------+
+
+Rock falls 1 unit:
+|..@....|
+|.@@@...|
+|..@....|
+|.......|
+|.......|
+|..####.|
++-------+
+
+Jet of gas pushes rock right:
+|...@...|
+|..@@@..|
+|...@...|
+|.......|
+|.......|
+|..####.|
++-------+
+
+Rock falls 1 unit:
+|...@...|
+|..@@@..|
+|...@...|
+|.......|
+|..####.|
++-------+
+
+Jet of gas pushes rock left:
+|..@....|
+|.@@@...|
+|..@....|
+|.......|
+|..####.|
++-------+
+
+Rock falls 1 unit:
+|..@....|
+|.@@@...|
+|..@....|
+|..####.|
++-------+
+
+Jet of gas pushes rock right:
+|...@...|
+|..@@@..|
+|...@...|
+|..####.|
++-------+
+
+Rock falls 1 unit, causing it to come to rest:
+|...#...|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+A new rock begins falling:
+|....@..|
+|....@..|
+|..@@@..|
+|.......|
+|.......|
+|.......|
+|...#...|
+|..###..|
+|...#...|
+|..####.|
++-------+
+```
+
+The moment each of the next few rocks begins falling, you would see this:
+
+```
+|..@....|
+|..@....|
+|..@....|
+|..@....|
+|.......|
+|.......|
+|.......|
+|..#....|
+|..#....|
+|####...|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|..@@...|
+|..@@...|
+|.......|
+|.......|
+|.......|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|..@@@@.|
+|.......|
+|.......|
+|.......|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|...@...|
+|..@@@..|
+|...@...|
+|.......|
+|.......|
+|.......|
+|.####..|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|....@..|
+|....@..|
+|..@@@..|
+|.......|
+|.......|
+|.......|
+|..#....|
+|.###...|
+|..#....|
+|.####..|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|..@....|
+|..@....|
+|..@....|
+|..@....|
+|.......|
+|.......|
+|.......|
+|.....#.|
+|.....#.|
+|..####.|
+|.###...|
+|..#....|
+|.####..|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|..@@...|
+|..@@...|
+|.......|
+|.......|
+|.......|
+|....#..|
+|....#..|
+|....##.|
+|....##.|
+|..####.|
+|.###...|
+|..#....|
+|.####..|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+
+|..@@@@.|
+|.......|
+|.......|
+|.......|
+|....#..|
+|....#..|
+|....##.|
+|##..##.|
+|######.|
+|.###...|
+|..#....|
+|.####..|
+|....##.|
+|....##.|
+|....#..|
+|..#.#..|
+|..#.#..|
+|#####..|
+|..###..|
+|...#...|
+|..####.|
++-------+
+```
+
+To prove to the elephants your simulation is accurate, they want to know how tall the tower will get after 2022 rocks have stopped (but before the 2023rd rock begins falling). In this example, the tower of rocks will be **3068** units tall.
+
+**How many units tall will the tower of rocks be after 2022 rocks have stopped falling?**
+
+```elixir
+defmodule Day17Part1 do
+  def simulate(jets, n_rocks) do
+    n_jets = tuple_size(jets)
+
+    Day17Shared.rocks()
+    |> Enum.take(n_rocks)
+    |> Enum.reduce({%{}, jets, 0}, fn rock, {chamber, jets, n_moves} ->
+      # how many height we need to add, by figure height
+      extra_y =
+        case rock do
+          :plank -> if chamber == %{}, do: 3, else: 4
+          :cross -> 6
+          :el -> 6
+          :pole -> 7
+          :square -> 5
+        end
+
+      start_y = Day17Shared.highest_rock(chamber) + extra_y
+
+      {new_chamber, n_moves} = restify(chamber, rock, {2, start_y}, jets, n_jets, n_moves)
+
+      if rem(n_moves, n_jets) == 0 do
+        IO.puts("\n*#{Day17Shared.highest_rock(chamber)}/#{start_y}/#{n_moves}")
+        Day17Shared.render(chamber, name: rock, pos: {2, start_y})
+      end
+
+      {new_chamber, jets, n_moves}
+    end)
+  end
+
+  def restify(chamber, figure, pos, jets, n_jets, n_moves) do
+    # |> Stream.drop(steps) |> Enum.take(1) |> hd()
+    direction = elem(jets, rem(n_moves, n_jets))
+
+    {x, y} = gas_push(chamber, figure, pos, direction)
+    moved_down = {x, y - 1}
+
+    if collision?(chamber, figure, moved_down) do
+      {put_in_rest(chamber, figure, {x, y}), n_moves + 1}
+    else
+      restify(chamber, figure, moved_down, jets, n_jets, n_moves + 1)
+    end
+  end
+
+  def put_in_rest(chamber, figure, {s_x, s_y}) do
+    figure
+    |> Day17Shared.shape()
+    |> Enum.reduce(chamber, fn {shape_x, shape_y}, chamber ->
+      x = s_x + shape_x
+      y = s_y - shape_y
+
+      Map.put(chamber, {x, y}, "#")
+    end)
+  end
+
+  def gas_push(chamber, figure, {x, y}, ">"),
+    do: if(collision?(chamber, figure, {x + 1, y}), do: {x, y}, else: {x + 1, y})
+
+  def gas_push(chamber, figure, {x, y}, "<"),
+    do: if(collision?(chamber, figure, {x - 1, y}), do: {x, y}, else: {x - 1, y})
+
+  # figure:
+  #   0123
+  # 0 ####
+  def collision?(_, :plank, {x, y}) when x < 0 or x > 3 or y < 0, do: true
+
+  def collision?(chamber, :plank, {x, y}) do
+    cells = [
+      chamber[{x, y}],
+      chamber[{x + 1, y}],
+      chamber[{x + 2, y}],
+      chamber[{x + 3, y}]
+    ]
+
+    "#" in cells
+  end
+
+  # figure:
+  #   012
+  # 0 .#.
+  # 1 ###
+  # 2 .#.
+  def collision?(_, :cross, {x, y}) when x > 4 or x < 0 or y < 2, do: true
+
+  def collision?(chamber, :cross, {x, y}) do
+    cells = [
+      chamber[{x + 1, y}],
+      chamber[{x, y - 1}],
+      chamber[{x + 1, y - 1}],
+      chamber[{x + 2, y - 1}],
+      chamber[{x + 1, y - 2}]
+    ]
+
+    "#" in cells
+  end
+
+  # figure:
+  #   012
+  # 0 ..#
+  # 1 ..#
+  # 2 ###
+  def collision?(_, :el, {x, y}) when x > 4 or x < 0 or y < 2, do: true
+
+  def collision?(chamber, :el, {x, y}) do
+    cells = [
+      chamber[{x, y - 2}],
+      chamber[{x + 1, y - 2}],
+      chamber[{x + 2, y}],
+      chamber[{x + 2, y - 1}],
+      chamber[{x + 2, y - 2}]
+    ]
+
+    "#" in cells
+  end
+
+  # figure:
+  #   0
+  # 0 #
+  # 1 #
+  # 2 #
+  # 3 #
+  def collision?(_, :pole, {x, y}) when x > 6 or x < 0 or y < 3, do: true
+
+  def collision?(chamber, :pole, {x, y}) do
+    cells = [
+      chamber[{x, y}],
+      chamber[{x, y - 1}],
+      chamber[{x, y - 2}],
+      chamber[{x, y - 3}]
+    ]
+
+    "#" in cells
+  end
+
+  # figure:
+  #   01
+  # 0 ##
+  # 1 ##
+  def collision?(_, :square, {x, y}) when x > 5 or x < 0 or y < -1, do: true
+
+  def collision?(chamber, :square, {x, y}) do
+    cells = [
+      chamber[{x, y}],
+      chamber[{x + 1, y}],
+      chamber[{x, y - 1}],
+      chamber[{x + 1, y - 1}]
+    ]
+
+    "#" in cells
+  end
+end
+
+chamber =
+  input
+  |> Day17Shared.jets()
+  |> Day17Part1.simulate(2022)
+  |> elem(0)
+
+max_y =
+  chamber
+  |> Map.keys()
+  |> Enum.map(&elem(&1, 1))
+  |> Enum.max()
+
+max_y + 1
+```
