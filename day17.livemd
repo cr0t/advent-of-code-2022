@@ -47,15 +47,12 @@ defmodule Day17Shared do
     |> Kernel.++(["|0123456|"])
     |> Enum.join("\n")
     |> IO.puts()
-
-    # return just to use in map/reduce
-    chamber
   end
 
   def highest_rock(chamber) do
     case Map.keys(chamber) do
       [] -> 0
-      coords -> Enum.sort_by(coords, &elem(&1, 1), :desc) |> hd() |> elem(1)
+      coords -> Map.keys(chamber) |> Enum.map(&elem(&1, 1)) |> Enum.max()
     end
   end
 
@@ -459,41 +456,47 @@ defmodule Day17Part1 do
 
     Day17Shared.rocks()
     |> Enum.take(n_rocks)
-    |> Enum.reduce({%{}, jets, 0}, fn rock, {chamber, jets, n_moves} ->
+    |> Enum.reduce({%{}, jets, 0, 0}, fn rock, {chamber, jets, n_moves, highest} ->
       # how many height we need to add, by figure height
       extra_y =
         case rock do
-          :plank -> if chamber == %{}, do: 3, else: 4
+          :plank -> if highest == 0, do: 3, else: 4
           :cross -> 6
           :el -> 6
           :pole -> 7
           :square -> 5
         end
 
-      start_y = Day17Shared.highest_rock(chamber) + extra_y
+      start_pos = {2, highest + extra_y}
 
-      {new_chamber, n_moves} = restify(chamber, rock, {2, start_y}, jets, n_jets, n_moves)
+      {new_chamber, n_moves, highest} =
+        restify(chamber, rock, start_pos, jets, n_jets, n_moves, highest)
 
       if rem(n_moves, n_jets) == 0 do
-        IO.puts("\n*#{Day17Shared.highest_rock(chamber)}/#{start_y}/#{n_moves}")
-        Day17Shared.render(chamber, name: rock, pos: {2, start_y})
+        IO.puts("\n*#{Day17Shared.highest_rock(chamber)}/#{n_moves}")
+        Day17Shared.render(chamber, name: rock, pos: start_pos)
       end
 
-      {new_chamber, jets, n_moves}
+      {new_chamber, jets, n_moves, highest}
     end)
   end
 
-  def restify(chamber, figure, pos, jets, n_jets, n_moves) do
-    # |> Stream.drop(steps) |> Enum.take(1) |> hd()
+  def restify(chamber, figure, pos, jets, n_jets, n_moves, highest) do
     direction = elem(jets, rem(n_moves, n_jets))
 
     {x, y} = gas_push(chamber, figure, pos, direction)
     moved_down = {x, y - 1}
 
     if collision?(chamber, figure, moved_down) do
-      {put_in_rest(chamber, figure, {x, y}), n_moves + 1}
+      highest = if y > highest, do: y, else: highest
+
+      {
+        put_in_rest(chamber, figure, {x, y}),
+        n_moves + 1,
+        highest
+      }
     else
-      restify(chamber, figure, moved_down, jets, n_jets, n_moves + 1)
+      restify(chamber, figure, moved_down, jets, n_jets, n_moves + 1, highest)
     end
   end
 
@@ -618,4 +621,16 @@ max_y =
   |> Enum.max()
 
 max_y + 1
+```
+
+## Part 2
+
+The elephants are not impressed by your simulation. They demand to know how tall the tower will be after **1000000000000** rocks have stopped! Only then will they feel confident enough to proceed through the cave.
+
+In the example above, the tower would be **1514285714288** units tall!
+
+**How tall will the tower be after 1000000000000 rocks have stopped?**
+
+```elixir
+# goal: 1_000_000_000_000
 ```
