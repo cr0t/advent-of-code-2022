@@ -21,6 +21,17 @@ defmodule Day18Shared do
       Enum.map([x, y, z], &String.to_integer/1) |> List.to_tuple()
     end)
   end
+
+  def neighbors({x, y, z}) do
+    [
+      {x + 1, y, z},
+      {x, y + 1, z},
+      {x, y, z + 1},
+      {x - 1, y, z},
+      {x, y - 1, z},
+      {x, y, z - 1}
+    ]
+  end
 end
 
 # Day18Shared.parse(input)
@@ -70,26 +81,181 @@ defmodule Day18Part1 do
     cubes
     |> Enum.reduce(0, fn cube, exposed_sides ->
       adjacent_sides =
-        neighbors(cube)
+        cube
+        |> Day18Shared.neighbors()
         |> Enum.count(&MapSet.member?(cache, &1))
 
       exposed_sides + (@sides - adjacent_sides)
     end)
-  end
-
-  def neighbors({x, y, z}) do
-    [
-      {x + 1, y, z},
-      {x, y + 1, z},
-      {x, y, z + 1},
-      {x - 1, y, z},
-      {x, y - 1, z},
-      {x, y, z - 1}
-    ]
   end
 end
 
 input
 |> Day18Shared.parse()
 |> Day18Part1.count()
+```
+
+## Part 2
+
+Something seems off about your calculation. The cooling rate depends on exterior surface area, but your calculation also included the surface area of air pockets trapped in the lava droplet.
+
+Instead, consider only cube sides that could be reached by the water and steam as the lava droplet tumbles into the pond. The steam will expand to reach as much as possible, completely displacing any air on the outside of the lava droplet but never expanding diagonally.
+
+In the larger example above, exactly one cube of air is trapped within the lava droplet (at `2,2,5`), so the exterior surface area of the lava droplet is **58**.
+
+**What is the exterior surface area of your scanned lava droplet?**
+
+```elixir
+defmodule Day18Part2 do
+  @sides 6
+
+  @doc """
+  Calculates exterior surface area of the lava droplet in the pond.
+
+  Takes into consideration internal cavities filled with air (steam) to
+  exclude them from the total exterior surface area.
+  """
+  def surface(cubes) do
+    dimensions = dimensions(cubes)
+    cubes_cache = MapSet.new(cubes)
+
+    cavities_cache =
+      air(dimensions, cubes_cache)
+      |> cavities(dimensions, cubes_cache)
+      |> MapSet.new()
+
+    Enum.reduce(cubes, 0, fn cube, exposed_sides ->
+      neighbors = Day18Shared.neighbors(cube)
+
+      adjacent_sides = Enum.count(neighbors, &MapSet.member?(cubes_cache, &1))
+      cavities_sides = Enum.count(neighbors, &MapSet.member?(cavities_cache, &1))
+
+      exposed_sides + (@sides - adjacent_sides - cavities_sides)
+    end)
+  end
+
+  @doc """
+  Generate all coordinates of the given cuboid that are not lava cubes – air ones
+  """
+  def air(dimensions, cubes_cache) do
+    {min_x, min_y, min_z, max_x, max_y, max_z} = dimensions
+
+    # we optimize a bit and we are not interested in coordinates that are on the edge
+    # of the biggest cuboid (as we will check for the neighbors to be there later)
+    for x <- (min_x + 1)..(max_x - 1),
+        y <- (min_y + 1)..(max_y - 1),
+        z <- (min_z + 1)..(max_z - 1),
+        not MapSet.member?(cubes_cache, {x, y, z}),
+        do: {x, y, z}
+  end
+
+  @doc """
+  Find all cavities (air cubes are trapped within the lava droplets and unable to
+  reach to the exterior world).
+
+  To make our lives easier (and avoid graph traversals to find if a cavity is
+  enclosed or not), we are going to start from exterior side and check all the
+  air coordinates if they touch exterior ones or not; we need to to do this from
+  all the cuboid corners (as some of coordinates mighe be shadowed by lava cubes).
+  """
+  def cavities(all_air, dimensions, cubes_cache) do
+    exterior_cache =
+      MapSet.new()
+      |> find_exterior(from(:min_min_min, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:max_min_min, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:min_max_min, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:max_max_min, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:min_min_max, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:max_min_max, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:min_max_max, dimensions), dimensions, cubes_cache)
+      |> find_exterior(from(:max_max_max, dimensions), dimensions, cubes_cache)
+
+    # cavities is just all the air bubbles that are not connected to exterior ones
+    all_air -- MapSet.to_list(exterior_cache)
+  end
+
+  @doc """
+  Takes coordinates, checks they are exterior air bubble or not, and updates
+  the set of exterior ones accordingly.
+  """
+  def find_exterior(exterior_cache, coords, dimensions, cubes_cache) do
+    Enum.reduce(coords, exterior_cache, fn pos, cache ->
+      if exterior?(pos, dimensions, cubes_cache, cache) do
+        MapSet.put(cache, pos)
+      else
+        cache
+      end
+    end)
+  end
+
+  @doc """
+  Check if a given position of air cube "touches" the external air:
+
+  - at first, by checking if the any of neighbors of the given cube are on the edge
+  - if they're not edge ones, it checks if it's not a lava cube and if it's already
+    marked as an exterior air cube
+  """
+  def exterior?(position, dimensions, cubes_cache, exterior_cache) do
+    {min_x, min_y, min_z, max_x, max_y, max_z} = dimensions
+
+    position
+    |> Day18Shared.neighbors()
+    |> Enum.any?(fn
+      {x, _, _} when x == min_x - 1 or x == max_x + 1 -> true
+      {_, y, _} when y == min_y - 1 or y == max_y + 1 -> true
+      {_, _, z} when z == min_z - 1 or z == max_z + 1 -> true
+      pos -> !MapSet.member?(cubes_cache, pos) and MapSet.member?(exterior_cache, pos)
+    end)
+  end
+
+  ###
+
+  # a few helpers to generate coordinates from different corners of a cuboid;
+  # in total, a cuboid has 8 corners
+  defp from(:min_min_min, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- min_x..max_x, y <- min_y..max_y, z <- min_z..max_z, do: {x, y, z})
+
+  defp from(:max_min_min, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- max_x..min_x, y <- min_y..max_y, z <- min_z..max_z, do: {x, y, z})
+
+  defp from(:min_max_min, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- min_x..max_x, y <- max_y..min_y, z <- min_z..max_z, do: {x, y, z})
+
+  defp from(:max_max_min, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- max_x..min_x, y <- max_y..min_y, z <- min_z..max_z, do: {x, y, z})
+
+  defp from(:min_min_max, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- min_x..max_x, y <- min_y..max_y, z <- max_z..min_z, do: {x, y, z})
+
+  defp from(:max_min_max, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- max_x..min_x, y <- min_y..max_y, z <- max_z..min_z, do: {x, y, z})
+
+  defp from(:min_max_max, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- min_x..max_x, y <- max_y..min_y, z <- max_z..min_z, do: {x, y, z})
+
+  defp from(:max_max_max, {min_x, min_y, min_z, max_x, max_y, max_z}),
+    do: for(x <- max_x..min_x, y <- max_y..min_y, z <- max_z..min_z, do: {x, y, z})
+
+  # helper to find out min and max coordinats of all 3 axes of a cuboid that is
+  # formed by lava cubes
+  defp dimensions(cubes) do
+    min_x = Enum.map(cubes, &elem(&1, 0)) |> Enum.min()
+    min_y = Enum.map(cubes, &elem(&1, 1)) |> Enum.min()
+    min_z = Enum.map(cubes, &elem(&1, 2)) |> Enum.min()
+    max_x = Enum.map(cubes, &elem(&1, 0)) |> Enum.max()
+    max_y = Enum.map(cubes, &elem(&1, 1)) |> Enum.max()
+    max_z = Enum.map(cubes, &elem(&1, 2)) |> Enum.max()
+
+    {min_x, min_y, min_z, max_x, max_y, max_z}
+  end
+end
+
+# 549 is too low
+# 4276 is too high
+# 2052 is too low
+# 2244 is not the right answer
+# 2556 is the right answer
+input
+|> Day18Shared.parse()
+|> Day18Part2.surface()
 ```
