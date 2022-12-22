@@ -1,0 +1,242 @@
+# Day 22: Monkey Map
+
+```elixir
+Mix.install([{:kino, "~> 0.8.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Please paste your input:")
+```
+
+```elixir
+defmodule Day22Shared do
+  def parse(input) do
+    [raw_map, raw_path] =
+      input
+      |> Kino.Input.read()
+      |> String.split("\n\n")
+
+    {parse_map(raw_map), parse_path(raw_path)}
+  end
+
+  defp parse_map(raw_map) do
+    raw_map
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.reduce(%{}, fn {row, y}, map ->
+      row
+      |> String.codepoints()
+      |> Enum.with_index(1)
+      |> Enum.reduce(map, fn
+        {" ", _}, map -> map
+        {".", x}, map -> Map.put(map, {x, y}, :open)
+        {"#", x}, map -> Map.put(map, {x, y}, :wall)
+      end)
+    end)
+  end
+
+  defp parse_path(raw_path) do
+    ~r/(\d+)([LR])?/
+    |> Regex.scan(raw_path, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.map(fn cmd ->
+      case Integer.parse(cmd) do
+        :error -> cmd
+        {n, _} -> n
+      end
+    end)
+  end
+
+  def start(map) do
+    map
+    |> Map.keys()
+    |> Enum.filter(&(elem(&1, 1) == 1))
+    |> Enum.sort()
+    |> List.first()
+  end
+
+  def edge(:right, map, row),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:desc) |> List.first()
+
+  def edge(:left, map, row),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:asc) |> List.first()
+
+  def edge(:bottom, map, col),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:desc) |> List.first()
+
+  def edge(:top, map, col),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:asc) |> List.first()
+end
+
+# {map, _} = Day22Shared.parse(input)
+# Day22Shared.start(map)
+```
+
+## Part 1
+
+The monkeys take you on a surprisingly easy trail through the jungle. They're even going in roughly the right direction according to your handheld device's Grove Positioning System.
+
+As you walk, the monkeys explain that the grove is protected by a **force field**. To pass through the force field, you have to enter a password; doing so involves tracing a specific **path** on a strangely-shaped board.
+
+At least, you're pretty sure that's what you have to do; the elephants aren't exactly fluent in monkey.
+
+The monkeys give you notes that they took when they last saw the password entered (your puzzle input).
+
+For example:
+
+```
+        ...#
+        .#..
+        #...
+        ....
+...#.......#
+........#...
+..#....#....
+..........#.
+        ...#....
+        .....#..
+        .#......
+        ......#.
+
+10R5L5R10L4R5L5
+```
+
+The first half of the monkeys' notes is a **map of the board**. It is comprised of a set of **open tiles** (on which you can move, drawn `.`) and **solid walls** (tiles which you cannot enter, drawn `#`).
+
+The second half is a description of **the path you must follow**. It consists of alternating numbers and letters:
+
+* A **number** indicates the **number of tiles to move** in the direction you are facing. If you run into a wall, you stop moving forward and continue with the next instruction.
+* A **letter** indicates whether to turn 90 degrees **clockwise** (`R`) or **counterclockwise** (`L`). Turning happens in-place; it does not change your current tile.
+
+So, a path like `10R5` means "go forward 10 tiles, then turn clockwise 90 degrees, then go forward 5 tiles".
+
+You begin the path in the leftmost open tile of the top row of tiles. Initially, you are facing **to the right** (from the perspective of how the map is drawn).
+
+If a movement instruction would take you off of the map, you **wrap around** to the other side of the board. In other words, if your next tile is off of the board, you should instead look in the direction opposite of your current facing as far as you can until you find the opposite edge of the board, then reappear there.
+
+For example, if you are at `A` and facing to the right, the tile in front of you is marked `B`; if you are at `C` and facing down, the tile in front of you is marked `D`:
+
+```
+        ...#
+        .#..
+        #...
+        ....
+...#.D.....#
+........#...
+B.#....#...A
+.....C....#.
+        ...#....
+        .....#..
+        .#......
+        ......#.
+```
+
+It is possible for the next tile (after wrapping around) to be a **wall**; this still counts as there being a wall in front of you, and so movement stops before you actually wrap to the other side of the board.
+
+By drawing the **last facing you had** with an arrow on each tile you visit, the full path taken by the above example looks like this:
+
+```
+        >>v#
+        .#v.
+        #.v.
+        ..v.
+...#...v..v#
+>>>v...>#.>>
+..#v...#....
+...>>>>v..#.
+        ...#....
+        .....#..
+        .#......
+        ......#.
+```
+
+To finish providing the password to this strange input device, you need to determine numbers for your final **row**, **column**, and **facing** as your final position appears from the perspective of the original map. Rows start from `1` at the top and count downward; columns start from `1` at the left and count rightward. (In the above example, row 1, column 1 refers to the empty space with no tile on it in the top-left corner.) Facing is `0` for right (`>`), `1` for down (`v`), `2` for left (`<`), and `3` for up (`^`). The **final password** is the sum of 1000 times the row, 4 times the column, and the facing.
+
+In the above example, the final row is `6`, the final column is `8`, and the final facing is `0`. So, the final password is `1000 * 6 + 4 * 8 + 0: 6032`.
+
+Follow the path given in the monkeys' notes. **What is the final password?**
+
+```elixir
+defmodule Day22Part1 do
+  @facing %{
+    r: 0,
+    b: 1,
+    l: 2,
+    u: 3
+  }
+
+  def solve({map, path}) do
+    start = Day22Shared.start(map)
+
+    # Day22Shared.edge(:left, map, 6)
+    # |> IO.inspect()
+
+    path
+    |> Enum.reduce(%{pos: start, dir: :r}, fn
+      cmd, state when is_number(cmd) ->
+        # IO.puts("")
+        move(state, cmd, map)
+
+      # |> IO.inspect(label: "move #{cmd}")
+
+      cmd, state ->
+        rotate(state, cmd)
+        # |> IO.inspect(label: "rotate #{cmd}")
+    end)
+  end
+
+  def move(state, 0, _), do: state
+
+  def move(%{pos: current, dir: direction} = state, steps, map) do
+    decision = next(current, direction) |> decision(direction, map)
+    # IO.inspect([s: state, steps: steps, d: decision], label: "move")
+
+    case decision do
+      :stay -> move(state, steps - 1, map)
+      {:move, coord} -> move(%{state | pos: coord}, steps - 1, map)
+    end
+  end
+
+  def decision(position, direction, map) do
+    tile_type = tile(position, map)
+
+    case tile_type do
+      {_, :void} -> next_wrapped(position, direction, map) |> decision(direction, map)
+      {_, :wall} -> :stay
+      {coord, :open} -> {:move, coord}
+    end
+  end
+
+  def tile(coord, map), do: {coord, Map.get(map, coord, :void)}
+
+  def next({x, y}, :r), do: {x + 1, y}
+  def next({x, y}, :b), do: {x, y + 1}
+  def next({x, y}, :l), do: {x - 1, y}
+  def next({x, y}, :u), do: {x, y - 1}
+
+  def next_wrapped({_, y}, :r, map), do: Day22Shared.edge(:left, map, y)
+  def next_wrapped({_, y}, :l, map), do: Day22Shared.edge(:right, map, y)
+  def next_wrapped({x, _}, :b, map), do: Day22Shared.edge(:top, map, x)
+  def next_wrapped({x, _}, :u, map), do: Day22Shared.edge(:bottom, map, x)
+
+  def rotate(%{dir: :r} = state, "R"), do: Map.put(state, :dir, :b)
+  def rotate(%{dir: :b} = state, "R"), do: Map.put(state, :dir, :l)
+  def rotate(%{dir: :l} = state, "R"), do: Map.put(state, :dir, :u)
+  def rotate(%{dir: :u} = state, "R"), do: Map.put(state, :dir, :r)
+
+  def rotate(%{dir: :r} = state, "L"), do: Map.put(state, :dir, :u)
+  def rotate(%{dir: :b} = state, "L"), do: Map.put(state, :dir, :r)
+  def rotate(%{dir: :l} = state, "L"), do: Map.put(state, :dir, :b)
+  def rotate(%{dir: :u} = state, "L"), do: Map.put(state, :dir, :l)
+
+  def convert(%{dir: direction, pos: {col, row}}),
+    do: 1000 * row + 4 * col + @facing[direction]
+end
+
+input
+|> Day22Shared.parse()
+|> Day22Part1.solve()
+|> Day22Part1.convert()
+```
