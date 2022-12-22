@@ -18,6 +18,11 @@ defmodule Day20Shared do
     |> String.split("\n")
     |> Enum.map(&String.to_integer/1)
   end
+
+  @doc """
+  Helps to clean up resulting array from the redundant meta information.
+  """
+  def cl(uniq_file), do: Enum.map(uniq_file, &elem(&1, 0))
 end
 
 # Day20Shared.parse(input)
@@ -94,7 +99,15 @@ defmodule Day20Part1 do
   4. Profit!
   """
   def solve(file) do
-    mixed = mix(file) |> cl()
+    # Example input numbers are all unique, which is not true about the actual
+    # exercise input: there are non-unique numbers in the input file.
+    #
+    # If we go with this, we won't be able to find indexes of them, because we
+    # will be finding only index of the first number in the list.
+    #
+    # The simple way to make this data unique is to combine numbers with their
+    # original indexes.
+    mixed = Enum.with_index(file) |> mix() |> Day20Shared.cl()
 
     len = length(mixed)
     zero_idx = Enum.find_index(mixed, &(&1 == 0))
@@ -108,21 +121,12 @@ defmodule Day20Part1 do
   end
 
   @doc """
-  Example input numbers are all unique, which is not true about the actual
-  exercise input: there are non-unique numbers in the input file.
-
-  If we go with this, we won't be able to find indexes of them, because we
-  will be finding only index of the first number in the list.
-
-  The simple way to make this data unique is to combine numbers with their
-  original indexes. See also `cl/1` helper – it cleans the output from these
-  indexes after our mixing/shaking procedures.
+  Shake it! Shake it! Mix it! Mix it!
   """
   def mix(file) do
     len = length(file)
-    uniqialized = Enum.with_index(file)
 
-    Enum.reduce(uniqialized, uniqialized, fn {n, _} = num, acc ->
+    Enum.reduce(file, file, fn {n, _} = num, acc ->
       idx = Enum.find_index(acc, &(&1 == num))
 
       # cut the current list and dismiss the current number
@@ -139,12 +143,122 @@ defmodule Day20Part1 do
       List.insert_at(left ++ right, new_idx, num)
     end)
   end
-
-  # Helps to clean up resulting array from the redundant meta information
-  defp cl(uniq_file), do: Enum.map(uniq_file, &elem(&1, 0))
 end
 
 input
 |> Day20Shared.parse()
 |> Day20Part1.solve()
+```
+
+## Part 2
+
+The grove coordinate values seem nonsensical. While you ponder the mysteries of Elf encryption, you suddenly remember the rest of the decryption routine you overheard back at camp.
+
+First, you need to apply the **decryption key**, `811589153`. Multiply each number by the decryption key before you begin; this will produce the actual list of numbers to mix.
+
+Second, you need to mix the list of numbers **ten times**. The order in which the numbers are mixed does not change during mixing; the numbers are still moved in the order they appeared in the original, pre-mixed list. (So, if -3 appears fourth in the original list of numbers to mix, -3 will be the fourth number to move during each round of mixing.)
+
+Using the same example as above:
+
+```
+Initial arrangement:
+811589153, 1623178306, -2434767459, 2434767459, -1623178306, 0, 3246356612
+
+After 1 round of mixing:
+0, -2434767459, 3246356612, -1623178306, 2434767459, 1623178306, 811589153
+
+After 2 rounds of mixing:
+0, 2434767459, 1623178306, 3246356612, -2434767459, -1623178306, 811589153
+
+After 3 rounds of mixing:
+0, 811589153, 2434767459, 3246356612, 1623178306, -1623178306, -2434767459
+
+After 4 rounds of mixing:
+0, 1623178306, -2434767459, 811589153, 2434767459, 3246356612, -1623178306
+
+After 5 rounds of mixing:
+0, 811589153, -1623178306, 1623178306, -2434767459, 3246356612, 2434767459
+
+After 6 rounds of mixing:
+0, 811589153, -1623178306, 3246356612, -2434767459, 1623178306, 2434767459
+
+After 7 rounds of mixing:
+0, -2434767459, 2434767459, 1623178306, -1623178306, 811589153, 3246356612
+
+After 8 rounds of mixing:
+0, 1623178306, 3246356612, 811589153, -2434767459, 2434767459, -1623178306
+
+After 9 rounds of mixing:
+0, 811589153, 1623178306, -2434767459, 3246356612, 2434767459, -1623178306
+
+After 10 rounds of mixing:
+0, -2434767459, 1623178306, 3246356612, -1623178306, 2434767459, 811589153
+```
+
+The grove coordinates can still be found in the same way. Here, the 1000th number after `0` is **811589153**, the 2000th is **2434767459**, and the 3000th is **-1623178306**; adding these together produces **1623178306**.
+
+Apply the decryption key and mix your encrypted file ten times. **What is the sum of the three numbers that form the grove coordinates?**
+
+```elixir
+defmodule Day20Part2 do
+  @key 811_589_153
+
+  @doc """
+  Solution is extremely similar to the one from the 1st part, here are the changes:
+
+  - we process the input before mixing it (multiply each number by the given key)
+  - we mix it 10 times, and preserve the initial positions of the numbers to mix
+  """
+  def solve(file) do
+    original = decrypt(file) |> Enum.with_index()
+
+    mixed =
+      1..10
+      |> Enum.reduce(original, fn _, acc -> mix(original, acc) end)
+      |> Day20Shared.cl()
+
+    # now it's time to find out the actual solution
+    len = length(mixed)
+    zero_idx = Enum.find_index(mixed, &(&1 == 0))
+
+    [
+      Enum.at(mixed, rem(zero_idx + 1000, len)),
+      Enum.at(mixed, rem(zero_idx + 2000, len)),
+      Enum.at(mixed, rem(zero_idx + 3000, len))
+    ]
+    |> Enum.sum()
+  end
+
+  defp decrypt(file), do: Enum.map(file, &(&1 * @key))
+
+  @doc """
+  There is only one thing that differentiates this `mix` from the one from 1st part:
+  we need to preserve original mixing order, so, we take it as an extra argument to
+  go over. The rest it the same.
+  """
+  def mix(original, file) do
+    len = length(file)
+
+    Enum.reduce(original, file, fn {n, _} = num, acc ->
+      idx = Enum.find_index(acc, &(&1 == num))
+
+      # cut the current list and dismiss the current number
+      # we need only items before and after this position
+      {left, [_ | right]} = Enum.split(acc, idx)
+
+      # decide where to move the given number
+      move = Integer.mod(n, len - 1)
+      offset = if idx + move >= len, do: 1, else: 0
+      new_idx = Integer.mod(idx + move, len) + offset
+
+      # stitch the before and after parts into new list, and insert
+      # our number by the new position
+      List.insert_at(left ++ right, new_idx, num)
+    end)
+  end
+end
+
+input
+|> Day20Shared.parse()
+|> Day20Part2.solve()
 ```
