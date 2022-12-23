@@ -1,0 +1,458 @@
+# Day 23: Unstable Diffusion
+
+```elixir
+Mix.install([{:kino, "~> 0.8.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Please paste your input:")
+```
+
+```elixir
+defmodule Day23Shared do
+  @starting_priority ~w[north south west east]a
+
+  # we store only elves positions (as everything else is just an emptyness)
+  def parse(input) do
+    input
+    |> Kino.Input.read()
+    |> String.split("\n")
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {row, y}, map ->
+      String.codepoints(row)
+      |> Enum.with_index()
+      |> Enum.reduce(map, fn
+        {"#", x}, map -> Map.put(map, {x, y}, "#")
+        _, map -> map
+      end)
+    end)
+    |> Map.put(:priorities, @starting_priority)
+  end
+
+  # clockwise, starting from top (12 o'clock, North)
+  def neighbors({x, y}) do
+    [
+      {:N, {x, y - 1}},
+      {:NE, {x + 1, y - 1}},
+      {:E, {x + 1, y}},
+      {:SE, {x + 1, y + 1}},
+      {:S, {x, y + 1}},
+      {:SW, {x - 1, y + 1}},
+      {:W, {x - 1, y}},
+      {:NW, {x - 1, y - 1}}
+    ]
+  end
+
+  def render(map) do
+    {min_x, max_x, min_y, max_y} = edges(map)
+
+    Enum.map((min_y - 1)..(max_y + 1), fn y ->
+      Enum.map((min_x - 1)..(max_x + 1), fn x ->
+        Map.get(map, {x, y}, ".")
+      end)
+      |> Enum.join()
+    end)
+    |> Enum.join("\n")
+    |> IO.puts()
+
+    # nice to use in call chains
+    map
+  end
+
+  def edges(map) do
+    coords = Map.keys(map) |> Enum.reject(&is_atom(&1))
+
+    {min_x, max_x} = Enum.map(coords, &elem(&1, 0)) |> Enum.min_max()
+    {min_y, max_y} = Enum.map(coords, &elem(&1, 1)) |> Enum.min_max()
+
+    {min_x, max_x, min_y, max_y}
+  end
+
+  def elves(map), do: Map.keys(map) |> Enum.reject(&is_atom(&1))
+end
+
+Day23Shared.parse(input)
+|> Day23Shared.render()
+```
+
+## Part 1
+
+You enter a large crater of gray dirt where the grove is supposed to be. All around you, plants you imagine were expected to be full of fruit are instead withered and broken. A large group of Elves has formed in the middle of the grove.
+
+"...but this volcano has been dormant for months. Without ash, the fruit can't grow!"
+
+You look up to see a massive, snow-capped mountain towering above you.
+
+"It's not like there are other active volcanoes here; we've looked everywhere."
+
+"But our scanners show active magma flows; clearly it's going **somewhere**."
+
+They finally notice you at the edge of the grove, your pack almost overflowing from the random star fruit you've been collecting. Behind you, elephants and monkeys explore the grove, looking concerned. Then, the Elves recognize the ash cloud slowly spreading above your recent detour.
+
+"Why do you--" "How is--" "Did you just--"
+
+Before any of them can form a complete question, another Elf speaks up: "Okay, new plan. We have almost enough fruit already, and ash from the plume should spread here eventually. If we quickly plant new seedlings now, we can still make it to the extraction point. Spread out!"
+
+The Elves each reach into their pack and pull out a tiny plant. The plants rely on important nutrients from the ash, so they can't be planted too close together.
+
+There isn't enough time to let the Elves figure out where to plant the seedlings themselves; you quickly scan the grove (your puzzle input) and note their positions.
+
+For example:
+
+```
+....#..
+..###.#
+#...#.#
+.#...##
+#.###..
+##.#.##
+.#..#..
+```
+
+The scan shows Elves `#` and empty ground `.`; outside your scan, more empty ground extends a long way in every direction. The scan is oriented so that **north is up**; orthogonal directions are written N (north), S (south), W (west), and E (east), while diagonal directions are written NE, NW, SE, SW.
+
+The Elves follow a time-consuming process to figure out where they should each go; you can speed up this process considerably. The process consists of some number of **rounds** during which Elves alternate between considering where to move and actually moving.
+
+During the **first half** of each round, each Elf considers the eight positions adjacent to themself. If no other Elves are in one of those eight positions, the Elf **does not do anything** during this round. Otherwise, the Elf looks in each of four directions in the following order and **proposes** moving one step in the **first valid direction**:
+
+* If there is no Elf in the N, NE, or NW adjacent positions, the Elf proposes moving **north** one step.
+* If there is no Elf in the S, SE, or SW adjacent positions, the Elf proposes moving **south** one step.
+* If there is no Elf in the W, NW, or SW adjacent positions, the Elf proposes moving **west** one step.
+* If there is no Elf in the E, NE, or SE adjacent positions, the Elf proposes moving **east** one step.
+
+After each Elf has had a chance to propose a move, the **second half** of the round can begin. Simultaneously, each Elf moves to their proposed destination tile if they were the **only** Elf to propose moving to that position. If two or more Elves propose moving to the same position, **none** of those Elves move.
+
+Finally, at the end of the round, the **first direction** the Elves considered is moved to the end of the list of directions. For example, during the second round, the Elves would try proposing a move to the south first, then west, then east, then north. On the third round, the Elves would first consider west, then east, then north, then south.
+
+As a smaller example, consider just these five Elves:
+
+```
+.....
+..##.
+..#..
+.....
+..##.
+.....
+```
+
+The northernmost two Elves and southernmost two Elves all propose moving north, while the middle Elf cannot move north and proposes moving south. The middle Elf proposes the same destination as the southwest Elf, so neither of them move, but the other three do:
+
+```
+..##.
+.....
+..#..
+...#.
+..#..
+.....
+```
+
+Next, the northernmost two Elves and the southernmost Elf all propose moving south. Of the remaining middle two Elves, the west one cannot move south and proposes moving west, while the east one cannot move south or west and proposes moving east. All five Elves succeed in moving to their proposed positions:
+
+```
+.....
+..##.
+.#...
+....#
+.....
+..#..
+```
+
+Finally, the southernmost two Elves choose not to move at all. Of the remaining three Elves, the west one proposes moving west, the east one proposes moving east, and the middle one proposes moving north; all three succeed in moving:
+
+```
+..#..
+....#
+#....
+....#
+.....
+..#..
+```
+
+At this point, no Elves need to move, and so the process ends.
+
+The larger example above proceeds as follows:
+
+```
+== Initial State ==
+..............
+..............
+.......#......
+.....###.#....
+...#...#.#....
+....#...##....
+...#.###......
+...##.#.##....
+....#..#......
+..............
+..............
+..............
+
+== End of Round 1 ==
+..............
+.......#......
+.....#...#....
+...#..#.#.....
+.......#..#...
+....#.#.##....
+..#..#.#......
+..#.#.#.##....
+..............
+....#..#......
+..............
+..............
+
+== End of Round 2 ==
+..............
+.......#......
+....#.....#...
+...#..#.#.....
+.......#...#..
+...#..#.#.....
+.#...#.#.#....
+..............
+..#.#.#.##....
+....#..#......
+..............
+..............
+
+== End of Round 3 ==
+..............
+.......#......
+.....#....#...
+..#..#...#....
+.......#...#..
+...#..#.#.....
+.#..#.....#...
+.......##.....
+..##.#....#...
+...#..........
+.......#......
+..............
+
+== End of Round 4 ==
+..............
+.......#......
+......#....#..
+..#...##......
+...#.....#.#..
+.........#....
+.#...###..#...
+..#......#....
+....##....#...
+....#.........
+.......#......
+..............
+
+== End of Round 5 ==
+.......#......
+..............
+..#..#.....#..
+.........#....
+......##...#..
+.#.#.####.....
+...........#..
+....##..#.....
+..#...........
+..........#...
+....#..#......
+..............
+```
+
+After a few more rounds...
+
+```
+== End of Round 10 ==
+.......#......
+...........#..
+..#.#..#......
+......#.......
+...#.....#..#.
+.#......##....
+.....##.......
+..#........#..
+....#.#..#....
+..............
+....#..#..#...
+..............
+```
+
+To make sure they're on the right track, the Elves like to check after round 10 that they're making good progress toward covering enough ground. To do this, count the number of empty ground tiles contained by the smallest rectangle that contains every Elf. (The edges of the rectangle should be aligned to the N/S/E/W directions; the Elves do not have the patience to calculate arbitrary rectangles.) In the above example, that rectangle is:
+
+```
+......#.....
+..........#.
+.#.#..#.....
+.....#......
+..#.....#..#
+#......##...
+....##......
+.#........#.
+...#.#..#...
+............
+...#..#..#..
+```
+
+In this region, the number of empty ground tiles is **110**.
+
+Simulate the Elves' process and find the smallest rectangle that contains the Elves after 10 rounds. **How many empty ground tiles does that rectangle contain?**
+
+```elixir
+defmodule Day23Part1 do
+  import Day23Shared, only: [edges: 1, elves: 1, neighbors: 1, render: 1]
+
+  @directions ~w[N NE E SE S SW W NW]a
+
+  @north ~w[N NE NW]a
+  @south ~w[S SE SW]a
+  @west ~w[W NW SW]a
+  @east ~w[E NE SE]a
+
+  @to_look [north: @north, south: @south, west: @west, east: @east]
+
+  @doc """
+  Cycle up to max number of steps, then look at the map, check its sizes and
+  give the answer (for the Part 1).
+  """
+  def solve(map, max_steps) do
+    map = cycle(map, max_steps, 0)
+
+    {min_x, max_x, min_y, max_y} = edges(map)
+    elves_n = elves(map) |> Enum.count()
+
+    # when we know the edges of a grid, we can find the area of the grid and
+    # subtract number of elves on it (as we need to get the free points only)
+    [min_x..max_x, min_y..max_y]
+    |> Enum.map(&Enum.count/1)
+    |> Enum.product()
+    |> Kernel.-(elves_n)
+  end
+
+  @doc """
+  Run a round for the given map and elves state.
+
+  Most of the details are in the comments. The only thing we need to mention,
+  probably, is that we store "priorities" list right in the `map` (which plays
+  more like a state container role here).
+  """
+  def cycle(map, max_steps, step) do
+    # IO.puts("step #{10 - step}")
+    # render(map)
+
+    # get current priorities from the state container
+    priorities = Map.get(map, :priorities)
+
+    # prepare the moves plan
+    moves_plan = moves_plan(map, priorities)
+
+    # move elves (or leave staying some of them)
+    map =
+      Enum.reduce(moves_plan, map, fn
+        {_, :stay}, map ->
+          map
+
+        {elf, moves_to}, map ->
+          Map.delete(map, elf)
+          |> Map.put(moves_to, "#")
+      end)
+
+    # check how many moves we did according to the plan
+    moves = Enum.count(moves_plan, fn {_, val} -> is_tuple(val) end)
+
+    # finalize or continue to the next round
+    if moves == 0 or step == max_steps do
+      if moves == 0 do
+        IO.puts("No moves proposals, step #{step}")
+      end
+
+      map
+    else
+      priorities = tl(priorities) ++ [hd(priorities)]
+
+      Map.put(map, :priorities, priorities)
+      |> cycle(max_steps, step + 1)
+    end
+  end
+
+  @doc """
+  To prepare a moves plan, we need to:
+
+  1. Collect elves considerations.
+  2. Map the considerations to the coordinates each elf wants to move is.
+  3. Reject those elfs who want to move to the same tile.
+  4. Profit!
+  """
+  def moves_plan(map, priorities) do
+    plan =
+      map
+      |> elves()
+      |> considerations(priorities)
+      |> Enum.map(fn
+        {elf, []} ->
+          {elf, :stay}
+
+        {elf, directions} ->
+          direction = hd(directions)
+          {elf, next(elf, direction)}
+      end)
+
+    no_crossing =
+      plan
+      |> Enum.frequencies_by(&elem(&1, 1))
+      |> Enum.reject(&(elem(&1, 1) > 1))
+      |> Enum.map(&elem(&1, 0))
+
+    Enum.filter(plan, &(elem(&1, 1) in no_crossing))
+  end
+
+  @doc """
+  Check if elves consider to move somewhere. Go one by one, asking for their preferences.
+  See `proposals/2` on how we actually calculate the proposal for each elf.
+  """
+  def considerations(elves, priorities) do
+    Enum.map(elves, fn elf ->
+      {elf, proposals(elves, elf, priorities)}
+    end)
+  end
+
+  @doc """
+  Check elf's neighbors, find free tiles around. Then...
+
+  If elf is alone (surrounded by empty tiles), elf is not going to move.
+
+  In other case, we take the priorities into consideration and provide
+  proposals accordingly to these priorities.
+  """
+  def proposals(elves, elf, priorities) do
+    neib = neighbors(elf) |> Enum.filter(&(elem(&1, 1) in elves)) |> Enum.map(&elem(&1, 0))
+    free = @directions -- neib
+
+    if length(free) == 8 do
+      []
+    else
+      Enum.reduce(priorities, [], fn direction, acc ->
+        if @to_look[direction] -- free == [] do
+          [direction | acc]
+        else
+          acc
+        end
+      end)
+      |> Enum.reverse()
+
+      # we need to reverse the proposals list, because we collect it in the reversed
+      # order to priorities
+    end
+  end
+
+  # A few little Santa's coordinate helpers
+  defp next({x, y}, :north), do: {x, y - 1}
+  defp next({x, y}, :south), do: {x, y + 1}
+  defp next({x, y}, :west), do: {x - 1, y}
+  defp next({x, y}, :east), do: {x + 1, y}
+end
+
+input
+|> Day23Shared.parse()
+|> Day23Part1.solve(10)
+```
