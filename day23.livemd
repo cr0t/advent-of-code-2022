@@ -316,7 +316,7 @@ defmodule Day23Part1 do
   give the answer (for the Part 1).
   """
   def solve(map, max_steps) do
-    map = cycle(map, max_steps, 0)
+    map = cycle(map, max_steps, 1)
 
     {min_x, max_x, min_y, max_y} = edges(map)
     elves_n = elves(map) |> Enum.count()
@@ -392,8 +392,7 @@ defmodule Day23Part1 do
         {elf, []} ->
           {elf, :stay}
 
-        {elf, directions} ->
-          direction = hd(directions)
+        {elf, direction} ->
           {elf, next(elf, direction)}
       end)
 
@@ -431,17 +430,13 @@ defmodule Day23Part1 do
     if length(free) == 8 do
       []
     else
-      Enum.reduce(priorities, [], fn direction, acc ->
+      Enum.reduce_while(priorities, [], fn direction, acc ->
         if @to_look[direction] -- free == [] do
-          [direction | acc]
+          {:halt, direction}
         else
-          acc
+          {:cont, acc}
         end
       end)
-      |> Enum.reverse()
-
-      # we need to reverse the proposals list, because we collect it in the reversed
-      # order to priorities
     end
   end
 
@@ -455,4 +450,35 @@ end
 input
 |> Day23Shared.parse()
 |> Day23Part1.solve(10)
+```
+
+## Part 2
+
+It seems you're on the right track. Finish simulating the process and figure out where the Elves need to go. How many rounds did you save them?
+
+In the example above, the **first round where no Elf moved** was round 20:
+
+```
+.......#......
+....#......#..
+..#.....#.....
+......#.......
+...#....#.#..#
+#.............
+....#.....#...
+..#.....#.....
+....#.#....#..
+.........#....
+....#......#..
+.......#......
+```
+
+Figure out where the Elves need to go. **What is the number of the first round where no Elf moves?**
+
+```elixir
+# solution is not very optimal, it took ~350 seconds (on one core on i7 2.6Ghz)
+# to cycle through the 881 steps (which is the correct answer for the given input)
+input
+|> Day23Shared.parse()
+|> Day23Part1.solve(10000)
 ```
