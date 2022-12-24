@@ -302,8 +302,6 @@ Simulate the Elves' process and find the smallest rectangle that contains the El
 defmodule Day23Part1 do
   import Day23Shared, only: [edges: 1, elves: 1, neighbors: 1, render: 1]
 
-  @directions ~w[N NE E SE S SW W NW]a
-
   @north ~w[N NE NW]a
   @south ~w[S SE SW]a
   @west ~w[W NW SW]a
@@ -337,7 +335,7 @@ defmodule Day23Part1 do
   more like a state container role here).
   """
   def cycle(map, max_steps, step) do
-    # IO.puts("step #{10 - step}")
+    # IO.puts("step #{step}")
     # render(map)
 
     # get current priorities from the state container
@@ -389,11 +387,8 @@ defmodule Day23Part1 do
       |> elves()
       |> considerations(priorities)
       |> Enum.map(fn
-        {elf, []} ->
-          {elf, :stay}
-
-        {elf, direction} ->
-          {elf, next(elf, direction)}
+        {elf, []} -> {elf, :stay}
+        {elf, direction} -> {elf, next(elf, direction)}
       end)
 
     no_crossing =
@@ -424,8 +419,7 @@ defmodule Day23Part1 do
   proposals accordingly to these priorities.
   """
   def proposals(elves, elf, priorities) do
-    neib = neighbors(elf) |> Enum.filter(&(elem(&1, 1) in elves)) |> Enum.map(&elem(&1, 0))
-    free = @directions -- neib
+    free = neighbors(elf) |> Enum.reject(&(elem(&1, 1) in elves)) |> Enum.map(&elem(&1, 0))
 
     if length(free) == 8 do
       []
