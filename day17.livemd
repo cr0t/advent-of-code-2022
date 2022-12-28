@@ -458,16 +458,7 @@ defmodule Day17Part1 do
     |> Enum.take(n_rocks)
     |> Enum.reduce({%{}, jets, 0, 0}, fn rock, {chamber, jets, n_moves, highest} ->
       # how many height we need to add, by figure height
-      extra_y =
-        case rock do
-          :plank -> if highest == 0, do: 3, else: 4
-          :cross -> 6
-          :el -> 6
-          :pole -> 7
-          :square -> 5
-        end
-
-      start_pos = {2, highest + extra_y}
+      start_pos = {2, highest + extra_y(rock, highest)}
 
       {new_chamber, n_moves, highest} =
         restify(chamber, rock, start_pos, jets, n_jets, n_moves, highest)
@@ -479,6 +470,16 @@ defmodule Day17Part1 do
 
       {new_chamber, jets, n_moves, highest}
     end)
+  end
+
+  def extra_y(rock, highest) do
+    case rock do
+      :plank -> if highest == 0, do: 3, else: 4
+      :cross -> 6
+      :el -> 6
+      :pole -> 7
+      :square -> 5
+    end
   end
 
   def restify(chamber, figure, pos, jets, n_jets, n_moves, highest) do
@@ -631,6 +632,201 @@ In the example above, the tower would be **1514285714288** units tall!
 
 **How tall will the tower be after 1000000000000 rocks have stopped?**
 
+<!-- livebook:{"break_markdown":true} -->
+
+### Solution Preambule
+
+When Part 1 got solved, code used to run for ~2 seconds to find the answer. After a couple of optimizations of the underlying data-structures (see the actual changes in the corresponding [commit](https://github.com/cr0t/advent-of-code-2022/commit/6a69d3931110cde1b700e990b06acac8477adeb9)), the code ran for ~75-80 milliseconds.
+
+Though, even with such an improvement, for Part 2 (with a goal of 1 trillion figures dropped) only calculations would take up to ~230 days on my machine (Core i7 2.6Ghz). _It's not even not clear what happens to the memory consumption... Most likely, the resulting chamber wouldn't fit the machine's available memory._
+
+**There must be a trick in the data...**
+
+There must be some repeating pattern, as we have repeating set of figures and repeating set of jets directions in the input.
+
+And there is! _We just need to run the simulation for 10-30 thousand times to see it._
+
+We started to write down chamber height (`highest_rock/1`) every time the first figure set in rest. It gives us something like this:
+
+<!-- livebook:{"force_markdown":true} -->
+
 ```elixir
-# goal: 1_000_000_000_000
+[0, 9, 17, 25, 36, 43, 50, 60, 66, 72, 78, 89, 96, 103, 113, 119, 125, 131, 142, 149, 156, ...]
+```
+
+At the moment, it's hard to notice any repeating patterns in these numbers. But what if we do the next trick to the data:
+
+* chunk it into every pair from this list – `[0, 8]`, `[8, 16]`, `[16, 24]`, `[24, 35]`, `[35, 42]` and so on... You've got the idea, right?
+* calculate the difference of all these pairs
+
+What this information gives to us? It represents the delta in chamber's height every time we drop the `plank` figure (every cycle of figures basically). It looks like this:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+[9, 8, 8, 11, 7, 7, 10, 6, 6, 6, 11, 7, 7, 10, 6, 6, 6, 11, 7, 7, 10, 6, 6, 6, 11, 7, 7, ...]
+```
+
+See something noticeable? **Yes, there is a repeating pattern!**
+
+A few first full cycles (3 in this case), chamber's height increases by `9`, `8`, and `8` respectfully. After this it starts to increase a bit chaotically. But only at first; quite soon we see this repeating pattern again and again.
+
+_We can't mathematically prove that this pattern will last forever (I'm not that good at math), but we can assume that._
+
+If pattern repeats forever then we need to do a few things:
+
+1. Cycle through the reasonable amount (5000, 10000, 30000) and collect the height deltas.
+2. Find a pattern in these deltas (also we will find the non-repeating starting piece as well). Plus, it's length.
+3. Do some simple math with the data: check how many times pattern repeats, add a product of this number of time to the height deltas sum (of the repeating pattern) to a sum of deltas of non-repeating starting sequence, plus, check and add (if needed) the tail of the repeating pattern. _The last thing doesn't appear in the test example, but it appears in the normal input, because 1 trillion of figures (minus starting sequence) is not divisible by repeating pattern length without a remainder.
+
+```elixir
+defmodule Day17Part2 do
+  import Day17Shared, only: [jets: 1]
+  import Day17Part1, only: [extra_y: 2, restify: 7]
+
+  # 7 is just an arbitrary number (chosen based on the pattern that appears simulating
+  # chamber build process with the example input)
+  @lrp_min_length 7
+  @figures_n 5
+  @goal 1_000_000_000_000
+
+  @doc """
+  To find out how tall will be our tower in the chamber after 1 trillion rocks fell,
+  we need to run a simulation for a few thousand rocks at first to get the list of
+  heights of the figure inside it.
+
+  By pairing these heights one with another, we get deltas after each 5 rocks rest.
+
+  In these height deltas we have to find two things:
+
+  - recurring pattern
+  - initial sequence
+
+  At first, rocks will be resting in quite chaotic order, but after a thousand or so
+  got dropped, they start to repeat one pattern, and (according our gut feeling) this
+  heights deltas pattern will last forever.
+
+  Though, this data will be enough for us to calculate the chamber's height.
+
+  Note: depth need to be chosen arbitrary due to the way how we find Longest Recurring
+  Pattern. We found that if we run simulation only for 3_000 times, we cannot find it
+  at all. Simulation of 10_000 rocks adds nothing to the correct result – it just runs
+  longer (15k rocks and the rest of calculations take ~1 second on Core i7 2.6GHz).
+  """
+  def solve(input, depth \\ 4_000) do
+    chamber_heights =
+      input
+      |> jets()
+      |> simulate(depth)
+      |> elem(4)
+
+    deltas =
+      chamber_heights
+      |> Enum.reverse()
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.map(fn [a, b] -> b - a end)
+
+    case lrp(deltas) do
+      {:ok, pattern} -> chamber_height(deltas, pattern)
+      {:error, msg} -> IO.puts(msg)
+    end
+  end
+
+  @doc """
+  Does the simulation of falling rocks into the chamber.
+
+  There is a main difference with Part 1 version: we are not that interested in the
+  chamber itself, we collect chamber heigths after each 5 rocks rest (though we need
+  to store chamber state and other variables between the rocks).
+  """
+  def simulate(jets, n_rocks) do
+    n_jets = tuple_size(jets)
+
+    Day17Shared.rocks()
+    |> Enum.take(n_rocks)
+    |> Enum.reduce({%{}, jets, 0, 0, []}, fn rock, {chamber, jets, n_moves, highest, heights} ->
+      start_pos = {2, highest + extra_y(rock, highest)}
+
+      {new_chamber, n_moves, highest} =
+        restify(chamber, rock, start_pos, jets, n_jets, n_moves, highest)
+
+      heights = if(rock == :plank, do: [highest | heights], else: heights)
+
+      {new_chamber, jets, n_moves, highest, heights}
+    end)
+  end
+
+  @doc """
+  Finds out what is the Longest Recurring Pattern in the given list with the POWER of PCRE!
+  """
+  def lrp(deltas) do
+    stringified = Enum.join(deltas, ",")
+
+    matches =
+      Regex.scan(~r/(?=(.+)\1)/, stringified, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.find(&(String.length(&1) > @lrp_min_length))
+
+    if is_nil(matches) do
+      {:error, "try to increase depth you pass to Day17Part2.solve/2 (but not too much)"}
+    else
+      ptrn = String.split(matches, ",", trim: true) |> Enum.map(&String.to_integer/1)
+      {:ok, ptrn}
+    end
+  end
+
+  @doc """
+  Does a few simple math operations on the given deltas list and recurring pattern we
+  found earlies:
+
+  1. Gets the initial (non-recurring) sequence; we need it's sum and number of items.
+  2. Calculates the sum and number of items in the recurring pattern.
+  3. Finds out the tail piece; also sum of its items.
+  4. Sum all three pieces of data.
+
+  Note on "tail piece".
+
+  Goal number of rocks is not always divisible without a remainder to the sum of
+  number of items from initial sequence and repetitions * number of items in pattern.
+
+  There almost always a non-empty tail piece that will be non-full recurring pattern.
+
+  Visually, it might be represented like this:
+
+  [i, n, i, t, s, e, q][p, a, t, t, e, r, n][...][p, a, t, t, e, r, n][p, a, t, t]
+  """
+  def chamber_height(deltas, pattern) do
+    init_seq = initial_sequence(deltas, pattern)
+
+    init_count = Enum.count(init_seq)
+    init_sum = Enum.sum(init_seq)
+
+    pattern_count = Enum.count(pattern)
+    pattern_sum = Enum.sum(pattern)
+
+    tail_piece = rem(@goal - init_count * @figures_n, pattern_count * @figures_n)
+    tail_sum = Enum.take(pattern, div(tail_piece, @figures_n)) |> Enum.sum()
+
+    repetitions = div(@goal - init_count * @figures_n - tail_piece, pattern_count * @figures_n)
+
+    init_sum + pattern_sum * repetitions + tail_sum
+  end
+
+  @doc """
+  Finds out where the initial (non-recurring) sequence ends and returns it.
+
+  After this section we will see only recurring pattern repeat one after another.
+  """
+  def initial_sequence(deltas, pattern) do
+    elements =
+      Enum.find(1..length(pattern), fn i ->
+        Enum.drop(deltas, i) |> List.starts_with?(pattern)
+      end)
+
+    Enum.take(deltas, elements)
+  end
+end
+
+# 1540804597682 is the right answer!
+Day17Part2.solve(input)
 ```
