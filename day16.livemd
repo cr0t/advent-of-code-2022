@@ -1,0 +1,294 @@
+# Day 16: Proboscidea Volcanium
+
+```elixir
+Mix.install([{:kino, "~> 0.8.0"}, {:libgraph, "~> 0.16.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Please paste your input:")
+```
+
+```elixir
+defmodule Day16Shared do
+  def parse(input) do
+    input
+    |> Kino.Input.read()
+    |> String.split("\n")
+    |> Enum.reduce({%{}, Graph.new()}, fn raw, {rates, graph} ->
+      # basic parsing
+      regex = ~r/Valve ([A-Z]{2}) .+ rate=(\d+); .+ valves? ([A-Z, ]+$)/
+      [valve, rate, leads] = Regex.run(regex, raw, capture: :all_but_first)
+      [valve, rate, leads] = [valve, String.to_integer(rate), String.split(leads, ", ")]
+
+      # build edges
+      edges = Enum.map(leads, &{valve, &1, weight: 1})
+
+      # put data into containers
+      graph = Graph.add_vertex(graph, valve) |> Graph.add_edges(edges)
+      rates = Map.put(rates, valve, rate)
+
+      {rates, graph}
+    end)
+  end
+
+  def render(graph) do
+    edges =
+      for %{v1: v1, v2: v2} <- Graph.edges(graph) do
+        hops = Graph.get_shortest_path(graph, v1, v2) |> Enum.count()
+        "#{v1}<-->|#{hops}|#{v2};"
+      end
+
+    ["graph LR;" | edges]
+    |> Enum.join("\n")
+    |> Kino.Mermaid.new()
+  end
+end
+
+{_rates, graph} = Day16Shared.parse(input)
+Day16Shared.render(graph)
+```
+
+## Part 1
+
+The sensors have led you to the origin of the distress signal: yet another handheld device, just like the one the Elves gave you. However, you don't see any Elves around; instead, the device is surrounded by elephants! They must have gotten lost in these tunnels, and one of the elephants apparently figured out how to turn on the distress signal.
+
+The ground rumbles again, much stronger this time. What kind of cave is this, exactly? You scan the cave with your handheld device; it reports mostly igneous rock, some ash, pockets of pressurized gas, magma... this isn't just a cave, it's a volcano!
+
+You need to get the elephants out of here, quickly. Your device estimates that you have **30 minutes** before the volcano erupts, so you don't have time to go back out the way you came in.
+
+You scan the cave for other options and discover a network of pipes and pressure-release **valves**. You aren't sure how such a system got into a volcano, but you don't have time to complain; your device produces a report (your puzzle input) of each valve's **flow rate** if it were opened (in pressure per minute) and the tunnels you could use to move between the valves.
+
+There's even a valve in the room you and the elephants are currently standing in labeled `AA`. You estimate it will take you one minute to open a single valve and one minute to follow any tunnel from one valve to another. What is the most pressure you could release?
+
+For example, suppose you had the following scan output:
+
+```
+Valve AA has flow rate=0; tunnels lead to valves DD, II, BB
+Valve BB has flow rate=13; tunnels lead to valves CC, AA
+Valve CC has flow rate=2; tunnels lead to valves DD, BB
+Valve DD has flow rate=20; tunnels lead to valves CC, AA, EE
+Valve EE has flow rate=3; tunnels lead to valves FF, DD
+Valve FF has flow rate=0; tunnels lead to valves EE, GG
+Valve GG has flow rate=0; tunnels lead to valves FF, HH
+Valve HH has flow rate=22; tunnel leads to valve GG
+Valve II has flow rate=0; tunnels lead to valves AA, JJ
+Valve JJ has flow rate=21; tunnel leads to valve II
+```
+
+All of the valves begin **closed**. You start at valve `AA`, but it must be damaged or jammed or something: its flow rate is `0`, so there's no point in opening it. However, you could spend one minute moving to valve `BB` and another minute opening it; doing so would release pressure during the remaining **28 minutes** at a flow rate of `13`, a total eventual pressure release of `28 * 13 = 364`. Then, you could spend your third minute moving to valve `CC` and your fourth minute opening it, providing an additional **26 minutes** of eventual pressure release at a flow rate of `2`, or **52** total pressure released by valve `CC`.
+
+Making your way through the tunnels like this, you could probably open many or all of the valves by the time 30 minutes have elapsed. However, you need to release as much pressure as possible, so you'll need to be methodical. Instead, consider this approach:
+
+```
+== Minute 1 ==
+No valves are open.
+You move to valve DD.
+
+== Minute 2 ==
+No valves are open.
+You open valve DD.
+
+== Minute 3 ==
+Valve DD is open, releasing 20 pressure.
+You move to valve CC.
+
+== Minute 4 ==
+Valve DD is open, releasing 20 pressure.
+You move to valve BB.
+
+== Minute 5 ==
+Valve DD is open, releasing 20 pressure.
+You open valve BB.
+
+== Minute 6 ==
+Valves BB and DD are open, releasing 33 pressure.
+You move to valve AA.
+
+== Minute 7 ==
+Valves BB and DD are open, releasing 33 pressure.
+You move to valve II.
+
+== Minute 8 ==
+Valves BB and DD are open, releasing 33 pressure.
+You move to valve JJ.
+
+== Minute 9 ==
+Valves BB and DD are open, releasing 33 pressure.
+You open valve JJ.
+
+== Minute 10 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve II.
+
+== Minute 11 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve AA.
+
+== Minute 12 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve DD.
+
+== Minute 13 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve EE.
+
+== Minute 14 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve FF.
+
+== Minute 15 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve GG.
+
+== Minute 16 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You move to valve HH.
+
+== Minute 17 ==
+Valves BB, DD, and JJ are open, releasing 54 pressure.
+You open valve HH.
+
+== Minute 18 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You move to valve GG.
+
+== Minute 19 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You move to valve FF.
+
+== Minute 20 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You move to valve EE.
+
+== Minute 21 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You open valve EE.
+
+== Minute 22 ==
+Valves BB, DD, EE, HH, and JJ are open, releasing 79 pressure.
+You move to valve DD.
+
+== Minute 23 ==
+Valves BB, DD, EE, HH, and JJ are open, releasing 79 pressure.
+You move to valve CC.
+
+== Minute 24 ==
+Valves BB, DD, EE, HH, and JJ are open, releasing 79 pressure.
+You open valve CC.
+
+== Minute 25 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+== Minute 26 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+== Minute 27 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+== Minute 28 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+== Minute 29 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+== Minute 30 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+```
+
+This approach lets you release the most pressure possible in 30 minutes with this valve layout, **1651**.
+
+Work out the steps to release the most pressure in 30 minutes. **What is the most pressure you can release?**
+
+```elixir
+defmodule Day16Part1 do
+  @limit 30
+  @start "AA"
+
+  def solve({rates, graph}) do
+    to_be_opened = worth_to_open(rates)
+    costs = travel_costs(graph, to_be_opened)
+
+    flow(@start, to_be_opened, costs, @limit, [])
+  end
+
+  @doc """
+  Filters out only valves with non-zero flow rate.
+
+  P.S. Adds "AA" just to have a starting point there.
+  """
+  def worth_to_open(rates) do
+    rates
+    |> Enum.filter(fn {_valve, rate} -> rate > 0 end)
+    |> Enum.into(%{})
+    |> Map.put(@start, 0)
+  end
+
+  @doc """
+  Find distances between all the given valves.
+
+  To minify size of the resulting container we order valves names; so we won't
+  have double in the result. For example, without this sorting we would have this:
+
+  %{
+    # ...
+    {"AA", "CC"} => 3,
+    {"CC", "AA"} => 3,
+    # ...
+  }
+
+  With simple `a < b` guard we will have only {"AA", "CC"} => 3 record.
+
+  See `cost/3` clauses to get how we use this trick later.
+  """
+  def travel_costs(graph, worthy) do
+    for {a, _} <- worthy, {b, _} <- worthy, a != b, a < b, into: %{} do
+      hops = Graph.get_shortest_path(graph, a, b) |> Enum.count()
+
+      {{a, b}, hops}
+    end
+  end
+
+  @doc """
+  Dynamically finds the best released pressure we can get from visiting all the
+  valves worth to open.
+
+  It takes into consideration travel costs that is needed to move to the next
+  valve, and minutes remaining.
+
+  When time is over or when we do not have valves to open, we calculate the final
+  pressure released within the path (that we store in the opened list argument).
+  """
+  def flow(valve, valves, costs, minutes, opened)
+
+  def flow(_, valves, _, minutes, opened) when map_size(valves) == 0 or minutes <= 0 do
+    for {_, rate, opened_at} <- opened, reduce: 0 do
+      acc -> acc + opened_at * rate
+    end
+  end
+
+  def flow(valve, valves, costs, minutes, opened) do
+    for {next, rate} <- valves, next != valve, reduce: 0 do
+      pressure ->
+        travel = cost(costs, valve, next)
+        remain = minutes - travel
+
+        max(
+          pressure,
+          flow(next, Map.delete(valves, next), costs, remain, [{next, rate, remain} | opened])
+        )
+    end
+  end
+
+  # we need the first (guarded) clause here to find a correct key, because we
+  # sorted keys to minimize number of them (see travel_costs/2)
+  defp cost(costs, a, b) when b < a, do: cost(costs, b, a)
+  defp cost(costs, a, b), do: Map.fetch!(costs, {a, b})
+end
+
+# 1595 is right answer
+input
+|> Day16Shared.parse()
+|> Day16Part1.solve()
+```
