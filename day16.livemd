@@ -281,14 +281,225 @@ defmodule Day16Part1 do
     end
   end
 
-  # we need the first (guarded) clause here to find a correct key, because we
-  # sorted keys to minimize number of them (see travel_costs/2)
-  defp cost(costs, a, b) when b < a, do: cost(costs, b, a)
-  defp cost(costs, a, b), do: Map.fetch!(costs, {a, b})
+  @doc """
+  Returns the travel distance from node A to B.
+
+  P.S. We need the first (guarded) clause here to find a correct key, because
+  we sorted keys of the costs to minimize number of them (see travel_costs/2).
+  """
+  def cost(costs, a, b) when b < a, do: cost(costs, b, a)
+  def cost(costs, a, b), do: Map.fetch!(costs, {a, b})
 end
 
 # 1595 is right answer
 input
 |> Day16Shared.parse()
 |> Day16Part1.solve()
+```
+
+## Part 2
+
+You're worried that even with an optimal approach, the pressure released won't be enough. What if you got one of the elephants to help you?
+
+It would take you 4 minutes to teach an elephant how to open the right valves in the right order, leaving you with only **26 minutes** to actually execute your plan. Would having two of you working together be better, even if it means having less time? (Assume that you teach the elephant before opening any valves yourself, giving you both the same full 26 minutes.)
+
+In the example above, you could teach the elephant to help you as follows:
+
+```
+== Minute 1 ==
+No valves are open.
+You move to valve II.
+The elephant moves to valve DD.
+
+== Minute 2 ==
+No valves are open.
+You move to valve JJ.
+The elephant opens valve DD.
+
+== Minute 3 ==
+Valve DD is open, releasing 20 pressure.
+You open valve JJ.
+The elephant moves to valve EE.
+
+== Minute 4 ==
+Valves DD and JJ are open, releasing 41 pressure.
+You move to valve II.
+The elephant moves to valve FF.
+
+== Minute 5 ==
+Valves DD and JJ are open, releasing 41 pressure.
+You move to valve AA.
+The elephant moves to valve GG.
+
+== Minute 6 ==
+Valves DD and JJ are open, releasing 41 pressure.
+You move to valve BB.
+The elephant moves to valve HH.
+
+== Minute 7 ==
+Valves DD and JJ are open, releasing 41 pressure.
+You open valve BB.
+The elephant opens valve HH.
+
+== Minute 8 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You move to valve CC.
+The elephant moves to valve GG.
+
+== Minute 9 ==
+Valves BB, DD, HH, and JJ are open, releasing 76 pressure.
+You open valve CC.
+The elephant moves to valve FF.
+
+== Minute 10 ==
+Valves BB, CC, DD, HH, and JJ are open, releasing 78 pressure.
+The elephant moves to valve EE.
+
+== Minute 11 ==
+Valves BB, CC, DD, HH, and JJ are open, releasing 78 pressure.
+The elephant opens valve EE.
+
+(At this point, all valves are open.)
+
+== Minute 12 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+...
+
+== Minute 20 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+
+...
+
+== Minute 26 ==
+Valves BB, CC, DD, EE, HH, and JJ are open, releasing 81 pressure.
+```
+
+With the elephant helping, after 26 minutes, the best you could do would release a total of **1707** pressure.
+
+**With you and an elephant working together for 26 minutes, what is the most pressure you could release?**
+
+<!-- livebook:{"break_markdown":true} -->
+
+### DISCLAIMER
+
+I was unable to solve the second part by myself and looked for hints and others' solutions. _To be fair, this task was hard for lots of folks._
+
+I found [a few solutions](https://elixirforum.com/t/advent-of-code-2022-day-16/52585/5) on the Elixir Forum, then took one and tried to comprehend it. Original solution is [here](https://github.com/stevensonmt/advent_of_code/blob/2022/2022/day16/lib/day16.ex); it is also a "copy" of someone's Rust code.
+
+I slightly re-wrote it _(as I don't store flow rates in the graph, and store distances in half)_, refactored a bit _(mostly just changed variables' and methods' names)_, and tried to comprehend by reading original code and comments and writing my own comments.
+
+I also learned about [`:array` Erlang's module](https://www.erlang.org/doc/man/array.html).
+
+```elixir
+defmodule Day16Part2 do
+  import Bitwise, only: [&&&: 2, "~~~": 1]
+  import Day16Part1, only: [worth_to_open: 1, travel_costs: 2, cost: 3]
+
+  @limit 26
+  @start "AA"
+
+  def solve({rates, graph}) do
+    worthy = worth_to_open(rates)
+    distances = travel_costs(graph, worthy)
+    to_be_opened = Map.delete(worthy, "AA") |> Map.keys() |> :array.from_list()
+
+    elephant_in_the_room(distances, to_be_opened, rates)
+  end
+
+  @doc """
+  Finds the best path for each subset of targets and match with the best complementary
+  subset; then take the best value combination.
+
+  P.S. The name of this function just shows that it's not clear HOW EXACTLY it works :)
+  """
+  def elephant_in_the_room(distances, to_be_opened, rates) do
+    valves_n = :array.sparse_size(to_be_opened)
+    bits_n = Integer.pow(2, valves_n) - 1
+
+    pressures = pressures(distances, to_be_opened, rates)
+
+    for me <- 1..bits_n,
+        el = bitstring_complement(me, valves_n),
+        sum = Enum.reduce([me, el], 0, fn i, sum -> sum + Map.fetch!(pressures, i) end),
+        reduce: 0 do
+      best -> max(best, sum)
+    end
+  end
+
+  @doc """
+  Finds the highest value path for each target valve.
+  """
+  def pressures(distances, to_be_opened, rates) do
+    valves_n = :array.sparse_size(to_be_opened)
+    bits_n = Integer.pow(2, valves_n) - 1
+
+    1..bits_n
+    |> Enum.map(&{&1, targets_for_bit(&1, valves_n, to_be_opened)})
+    |> Enum.map(fn {me, targets} ->
+      {me, best_path(distances, targets, rates, @start, @limit)}
+    end)
+    |> Enum.into(%{})
+    |> Map.put(0, 0)
+  end
+
+  @doc """
+  Digits of the index become flags for indices of the elements in the current
+  subset of targets. For example, idx = 5 gives bits of 101, so take targets[0]
+  and targets[2].
+
+  The bits are masked by the upper limit of possible indices to avoid
+  overflow/underflow errors.
+  """
+  def targets_for_bit(idx, count, to_be_opened) do
+    for i <- 0..(count - 1), anded = idx &&& Integer.pow(2, i), anded > 0 do
+      :array.get(i, to_be_opened)
+    end
+  end
+
+  @doc """
+  Get the indices for the complementary subset to the current subset defined by idx.
+
+  For example, idx = 5 gives bits of 101.
+
+  If there are 6 valves with flow > 0 (as in the example), then you have 2^6 - 1 maximum
+  indices. Use that max to mask the flipped bits to avoid overflow/underflow issues.
+
+  P.S. Bitwise not (~~~ operator) flips the bits.
+  """
+  def bitstring_complement(idx, count) do
+    mask = Integer.pow(2, count) - 1
+    flipped = ~~~idx
+
+    Bitwise.band(flipped, mask)
+  end
+
+  @doc """
+  For each (to be opened) target, find the path from the given start node to that
+  target that leads to the optimal complete path (i.e., the path resulting in either
+  running out of time or opening all valves).
+  """
+  def best_path(distances, to_be_opened, rates, start, time_left) do
+    for target <- to_be_opened,
+        travel = cost(distances, start, target),
+        travel < time_left,
+        relief_duration = time_left - travel,
+        pressure = rates[target] * relief_duration,
+        to_visit = Enum.reject(to_be_opened, &(&1 == target)),
+        reduce: 0 do
+      best ->
+        if to_visit == [] do
+          max(best, pressure)
+        else
+          max(best, pressure + best_path(distances, to_visit, rates, target, relief_duration))
+        end
+    end
+  end
+end
+
+# 2178 is too low
+# 2189 is the right answer
+input
+|> Day16Shared.parse()
+|> Day16Part2.solve()
 ```
