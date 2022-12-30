@@ -23,9 +23,7 @@ defmodule Day21Shared do
         if Regex.match?(~r/\d+/, job) do
           String.to_integer(job)
         else
-          [m1, op, m2] = String.split(job, " ")
-
-          {op, m1, m2}
+          String.split(job, " ")
         end
 
       {monkey, op}
@@ -92,7 +90,7 @@ defmodule Day21Part1 do
   missing pieces for the future calculations.
   """
   def process(monkeys) do
-    if is_tuple(monkeys[@root]) do
+    if is_list(monkeys[@root]) do
       monkeys
       |> reduce_jobs()
       |> process()
@@ -116,20 +114,20 @@ defmodule Day21Part1 do
     Enum.reduce(monkeys, monkeys, fn
       # do the operation in case both operands are numbers (not string pointers to
       # other monkey)
-      {monkey, {op, m1, m2}}, monkeys when not is_binary(m1) and not is_binary(m2) ->
+      {monkey, [m1, op, m2]}, monkeys when not is_binary(m1) and not is_binary(m2) ->
         case op do
           "+" -> Map.put(monkeys, monkey, m1 + m2)
           "-" -> Map.put(monkeys, monkey, m1 - m2)
           "*" -> Map.put(monkeys, monkey, m1 * m2)
-          "/" -> Map.put(monkeys, monkey, m1 / m2)
+          "/" -> Map.put(monkeys, monkey, div(m1, m2))
         end
 
       # update operands if they are available
-      {monkey, {op, m1, m2}}, monkeys ->
-        m1 = if is_binary(m1) and not is_tuple(monkeys[m1]), do: monkeys[m1], else: m1
-        m2 = if is_binary(m2) and not is_tuple(monkeys[m2]), do: monkeys[m2], else: m2
+      {monkey, [m1, op, m2]}, monkeys ->
+        m1 = if is_binary(m1) and not is_list(monkeys[m1]), do: monkeys[m1], else: m1
+        m2 = if is_binary(m2) and not is_list(monkeys[m2]), do: monkeys[m2], else: m2
 
-        Map.put(monkeys, monkey, {op, m1, m2})
+        Map.put(monkeys, monkey, [m1, op, m2])
 
       # do nothing
       _, monkeys ->
