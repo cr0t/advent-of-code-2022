@@ -140,3 +140,133 @@ input
 |> Day21Shared.parse()
 |> Day21Part1.process()
 ```
+
+## Part 2
+
+Due to some kind of monkey-elephant-human mistranslation, you seem to have misunderstood a few key details about the riddle.
+
+First, you got the wrong job for the monkey named `root`; specifically, you got the wrong math operation. The correct operation for monkey `root` should be `=`, which means that it still listens for two numbers (from the same two monkeys as before), but now checks that the two numbers **match**.
+
+Second, you got the wrong monkey for the job starting with `humn:`. It isn't a monkey - it's **you**. Actually, you got the job wrong, too: you need to figure out **what number you need to yell** so that `root`'s equality check passes. (The number that appears after `humn:` in your input is now irrelevant.)
+
+In the above example, the number you need to yell to pass `root`'s equality test is **301**. (This causes `root` to get the same number, `150`, from both of its monkeys.)
+
+**What number do you yell to pass root's equality test?**
+
+```elixir
+defmodule Day21Part2 do
+  @root "root"
+  @humn "humn"
+
+  @doc """
+  Algorithm:
+
+  1. Get monkeys from the root job description.
+  2. Build equations for each (one will be computable, the other will contain "humn" variable).
+  3. Compute the goal for the computable part.
+  4. Dig out the second equation until we find unknown variable.
+  5. Report to the user when done.
+  """
+  def solve(monkeys) do
+    [m1, _, m2] = Map.fetch!(monkeys, @root)
+
+    monkeys = Map.put(monkeys, @humn, nil)
+
+    m1 = unfold(m1, monkeys)
+    m2 = unfold(m2, monkeys)
+
+    # determine which equation have to be solved further,
+    # and which part can be computed (and compute it to simple number)
+    {equation, goal} = if computable?(m1), do: {m2, compute(m1)}, else: {m1, compute(m2)}
+
+    # the digging process returns something like:
+    # "x - 215 = 3243420789506"
+    # ...do the final math yourself to find our what x must be replaced with
+    dig(equation, goal)
+  end
+
+  @doc """
+  Recursively builds a list of lists (with some wrapped in each other) that represent
+  an equation to solve.
+
+  Examples of computable and non- equations:
+
+  - [[4, "+", [2, "*", [nil, "-", 3]]], "/", 4]
+  - [[32, "-", 2], "*", 5]
+
+  The lists inside lists must be viewed as parenthesis operations in math. For example,
+  the second equation we must be computerd in this order:
+
+  1. 32 - 2 = 30
+  2. 30 * 5 = 150
+  """
+  def unfold(monkey, monkeys) do
+    job = monkeys[monkey]
+
+    if is_list(job) do
+      [left, op, right] = job
+
+      left = if is_binary(left), do: unfold(left, monkeys), else: left
+      right = if is_binary(right), do: unfold(right, monkeys), else: right
+
+      [left, op, right]
+    else
+      job
+    end
+  end
+
+  @doc """
+  Folds the equation with unknown operand somewhere inside. Computes the parts that
+  are computable until we find that one of the operands is unknown (nil in our case).
+
+  Afterwards, it returns some simple equation, e.g.: "x - 3 = 298"
+
+  P.S. The trickiest part here is to use right opposite operations – +, -, *, / – and
+  what to divide on what (goal on operand, or operand on goal). It all depends on the
+  position of the operand (left or right) and the original operation between them.
+  """
+  def dig([nil, op, n], goal), do: Enum.join(["x", op, compute(n), "=", goal], " ")
+  def dig([n, op, nil], goal), do: Enum.join([compute(n), op, "x", "=", goal], " ")
+
+  def dig([a, "+", b], goal) when is_integer(a), do: dig(b, goal - a)
+  def dig([a, "-", b], goal) when is_integer(a), do: dig(b, a - goal)
+  def dig([a, "*", b], goal) when is_integer(a), do: dig(b, div(goal, a))
+  def dig([a, "/", b], goal) when is_integer(a), do: dig(b, div(a, goal))
+
+  def dig([a, "+", b], goal) when is_integer(b), do: dig(a, goal - b)
+  def dig([a, "-", b], goal) when is_integer(b), do: dig(a, goal + b)
+  def dig([a, "*", b], goal) when is_integer(b), do: dig(a, div(goal, b))
+  def dig([a, "/", b], goal) when is_integer(b), do: dig(a, goal * b)
+
+  def dig([a, op, b], goal) do
+    if computable?(a) do
+      dig([compute(a), op, b], goal)
+    else
+      dig([a, op, compute(b)], goal)
+    end
+  end
+
+  @doc """
+  Checks if flatten equation "tree" (list of lists wrapped in each other) can
+  be computed straight away, or contains an unknown variable.
+  """
+  def computable?(tree), do: nil not in List.flatten(tree)
+
+  @doc """
+  Does the straight arithmetic computations on the previously folded computable
+  equation (the list of lists that contains only known operands and operations).
+  """
+  def compute(n) when is_integer(n), do: n
+  def compute([a, "+", b]), do: compute(a) + compute(b)
+  def compute([a, "-", b]), do: compute(a) - compute(b)
+  def compute([a, "*", b]), do: compute(a) * compute(b)
+  def compute([a, "/", b]), do: div(compute(a), compute(b))
+end
+
+# -880 is not the right answer
+# 7241459543177 is not the right answer
+# 3243420789721 is the right answer
+input
+|> Day21Shared.parse()
+|> Day21Part2.solve()
+```
