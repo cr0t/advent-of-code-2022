@@ -49,6 +49,9 @@ defmodule Day22Shared do
     end)
   end
 
+  @doc """
+  Find the most top and left coordinate on the given map.
+  """
   def start(map) do
     map
     |> Map.keys()
@@ -57,17 +60,10 @@ defmodule Day22Shared do
     |> List.first()
   end
 
-  def edge(:right, map, row),
-    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:desc) |> List.first()
-
-  def edge(:left, map, row),
-    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:asc) |> List.first()
-
-  def edge(:bottom, map, col),
-    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:desc) |> List.first()
-
-  def edge(:top, map, col),
-    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:asc) |> List.first()
+  @doc """
+  Retrieves tile type: wall/open/void.
+  """
+  def tile(coord, map), do: {coord, Map.get(map, coord, :void)}
 end
 
 # {map, _} = Day22Shared.parse(input)
@@ -160,38 +156,40 @@ Follow the path given in the monkeys' notes. **What is the final password?**
 
 ```elixir
 defmodule Day22Part1 do
-  @facing %{
-    r: 0,
-    b: 1,
-    l: 2,
-    u: 3
-  }
+  import Day22Shared, only: [start: 1, tile: 2]
 
+  @facing %{r: 0, b: 1, l: 2, u: 3}
+
+  @doc """
+  To solve the task, we need to follow the given path step by step by moving to next
+  tile or rotating on the same. We start from the starting position and with given
+  direction, and we store and update our current position in the state.
+  """
   def solve({map, path}) do
-    start = Day22Shared.start(map)
+    Enum.reduce(path, %{pos: start(map), dir: :r}, fn
+      steps_n, state when is_number(steps_n) ->
+        move(state, steps_n, map)
 
-    # Day22Shared.edge(:left, map, 6)
-    # |> IO.inspect()
-
-    path
-    |> Enum.reduce(%{pos: start, dir: :r}, fn
-      cmd, state when is_number(cmd) ->
-        # IO.puts("")
-        move(state, cmd, map)
-
-      # |> IO.inspect(label: "move #{cmd}")
-
-      cmd, state ->
-        rotate(state, cmd)
-        # |> IO.inspect(label: "rotate #{cmd}")
+      direction, state ->
+        rotate(state, direction)
     end)
+    |> convert()
   end
 
+  @doc """
+  Computes the final answer according to the rules.
+  """
+  def convert(%{dir: direction, pos: {col, row}}),
+    do: 1000 * row + 4 * col + @facing[direction]
+
+  @doc """
+  Moves our position a few steps forward into current direction, or left us stay on the
+  same in case we face into a wall. When steps are done, we return our current position.
+  """
   def move(state, 0, _), do: state
 
   def move(%{pos: current, dir: direction} = state, steps, map) do
     decision = next(current, direction) |> decision(direction, map)
-    # IO.inspect([s: state, steps: steps, d: decision], label: "move")
 
     case decision do
       :stay -> move(state, steps - 1, map)
@@ -199,6 +197,13 @@ defmodule Day22Part1 do
     end
   end
 
+  @doc """
+  Makes a decision on what is the next tile to move in:
+
+  - it can be a neighbor
+  - it can be the same tile (if we face into a wall, we have to stay)
+  - it can be on the other side of the map (if we reached the edge and need to move further)
+  """
   def decision(position, direction, map) do
     tile_type = tile(position, map)
 
@@ -209,34 +214,51 @@ defmodule Day22Part1 do
     end
   end
 
-  def tile(coord, map), do: {coord, Map.get(map, coord, :void)}
-
+  @doc """
+  Next coordinate with the given direction.
+  """
   def next({x, y}, :r), do: {x + 1, y}
   def next({x, y}, :b), do: {x, y + 1}
   def next({x, y}, :l), do: {x - 1, y}
   def next({x, y}, :u), do: {x, y - 1}
 
-  def next_wrapped({_, y}, :r, map), do: Day22Shared.edge(:left, map, y)
-  def next_wrapped({_, y}, :l, map), do: Day22Shared.edge(:right, map, y)
-  def next_wrapped({x, _}, :b, map), do: Day22Shared.edge(:top, map, x)
-  def next_wrapped({x, _}, :u, map), do: Day22Shared.edge(:bottom, map, x)
+  @doc """
+  Next coordinate with the given direction on the other side of the map.
+  """
+  def next_wrapped({_, y}, :r, map), do: edge(:left, map, y)
+  def next_wrapped({_, y}, :l, map), do: edge(:right, map, y)
+  def next_wrapped({x, _}, :b, map), do: edge(:top, map, x)
+  def next_wrapped({x, _}, :u, map), do: edge(:bottom, map, x)
 
+  @doc """
+  Describes the changes to the direction we're facing.
+  """
   def rotate(%{dir: :r} = state, "R"), do: Map.put(state, :dir, :b)
   def rotate(%{dir: :b} = state, "R"), do: Map.put(state, :dir, :l)
   def rotate(%{dir: :l} = state, "R"), do: Map.put(state, :dir, :u)
   def rotate(%{dir: :u} = state, "R"), do: Map.put(state, :dir, :r)
-
   def rotate(%{dir: :r} = state, "L"), do: Map.put(state, :dir, :u)
   def rotate(%{dir: :b} = state, "L"), do: Map.put(state, :dir, :r)
   def rotate(%{dir: :l} = state, "L"), do: Map.put(state, :dir, :b)
   def rotate(%{dir: :u} = state, "L"), do: Map.put(state, :dir, :l)
 
-  def convert(%{dir: direction, pos: {col, row}}),
-    do: 1000 * row + 4 * col + @facing[direction]
+  @doc """
+  Finds a corresponding coordinate on the opposite side of the map.
+  """
+  def edge(:right, map, row),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:desc) |> List.first()
+
+  def edge(:left, map, row),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 1) == row)) |> Enum.sort(:asc) |> List.first()
+
+  def edge(:bottom, map, col),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:desc) |> List.first()
+
+  def edge(:top, map, col),
+    do: Map.keys(map) |> Enum.filter(&(elem(&1, 0) == col)) |> Enum.sort(:asc) |> List.first()
 end
 
 input
 |> Day22Shared.parse()
 |> Day22Part1.solve()
-|> Day22Part1.convert()
 ```
