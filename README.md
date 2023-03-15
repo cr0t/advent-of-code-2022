@@ -14,6 +14,6 @@ Input can be found in the similarly-named files.
 
 ## Solutions' Notes
 
-| Day            | Notes |
-|----------------|-------|
-| [day12.livemd] | BFS (Breadth-First Search) algorithm (with extra as counting number of steps to reach the goal to find the minimum) |
+| Day                          | Notes |
+|------------------------------|-------|
+| [day12.livemd](day12.livemd) | BFS (Breadth-First Search) algorithm (with extra as counting number of steps to reach the goal to find the minimum) |
